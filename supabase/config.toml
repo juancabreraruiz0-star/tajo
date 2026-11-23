@@ -1,0 +1,17 @@
+# Tajo · configuración de la CLI de Supabase (supabase start / supabase link).
+#
+# Alta solo por invitación (D9): nadie puede registrarse por su cuenta con la clave anónima. Los usuarios se crean
+# desde el panel (Authentication → Add user) y solo tienen perfil si su email está en public.invitaciones.
+#
+# OJO: en el proyecto alojado este fichero no se aplica solo. Allí el registro se desactiva a mano en el panel:
+# Authentication → Sign In / Providers → «Allow new users to sign up» (desactivado).
+
+project_id = "tajo"
+
+[auth]
+# Registro público cerrado (equivale a «Allow new users to sign up» desactivado).
+enable_signup = false
+
+[auth.email]
+# Tampoco por email y contraseña. Entrar con una cuenta ya creada sigue funcionando.
+enable_signup = false

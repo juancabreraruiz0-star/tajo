@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { budgetTotals, lineTotalCents, totalsByPresupuesto } from "./totals";
+import { budgetTotals, lineTotalCents } from "./totals";
 
 const bano = [
   { cantidad: 12.5, precioCents: 3240 }, // alicatado 12,5 m² × 32,40 € = 405,00 €
@@ -83,32 +83,5 @@ describe("budgetTotals", () => {
 
   it.each([-1, 10.5, 101, Number.NaN])("rechaza IVA no válido %d", (iva) => {
     expect(() => budgetTotals(bano, iva)).toThrow();
-  });
-});
-
-describe("totalsByPresupuesto", () => {
-  it("agrupa las partidas por presupuesto y aplica el IVA de cada uno", () => {
-    const totales = totalsByPresupuesto(
-      [
-        { id: "a", iva_pct: 21 },
-        { id: "b", iva_pct: 10 },
-        { id: "c", iva_pct: 21 },
-      ],
-      [
-        { presupuesto_id: "a", cantidad: 2, precio_cents: 5000 },
-        { presupuesto_id: "b", cantidad: 1, precio_cents: 20000 },
-        { presupuesto_id: "a", cantidad: 1.5, precio_cents: 1000 },
-        { presupuesto_id: "otro", cantidad: 1, precio_cents: 999 },
-      ],
-    );
-    expect(totales.get("a")).toEqual({ baseCents: 11500, ivaCents: 2415, totalCents: 13915 });
-    expect(totales.get("b")).toEqual({ baseCents: 20000, ivaCents: 2000, totalCents: 22000 });
-    expect(totales.get("c")).toEqual({ baseCents: 0, ivaCents: 0, totalCents: 0 });
-    expect(totales.has("otro")).toBe(false);
-  });
-
-  it("acepta cantidades que llegan como texto desde numeric", () => {
-    const lineas = [{ presupuesto_id: "a", cantidad: "2.5" as unknown as number, precio_cents: 1000 }];
-    expect(totalsByPresupuesto([{ id: "a", iva_pct: 0 }], lineas).get("a")?.totalCents).toBe(2500);
   });
 });

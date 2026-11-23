@@ -5,35 +5,51 @@ import { Alert } from "@/components/ui/alert";
 import { Button, LinkButton } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
+import { PaginaFueraDeRango, Paginacion } from "@/components/ui/paginacion";
 import { Table, type Column } from "@/components/ui/table";
 import { getSessionProfile } from "@/lib/auth";
 import { dbErrorMessage } from "@/lib/domain/errors";
+import { hrefPagina, paginacion, parsePagina } from "@/lib/domain/paginacion";
 import { normalizeSearch, toIlikeContains } from "@/lib/domain/search";
+import { leerPagina } from "@/lib/paginar";
 import type { Cliente } from "@/lib/types";
 
 export const metadata: Metadata = { title: "Clientes" };
 
-type ClienteFila = Pick<Cliente, "id" | "nombre" | "telefono" | "email" | "direccion">;
+type ClienteFila = Pick<Cliente, "id" | "nombre" | "nif" | "telefono" | "email" | "direccion">;
 
 const COLUMNAS: Column<ClienteFila>[] = [
   { key: "nombre", header: "Nombre", primary: true, cell: (c) => c.nombre },
+  { key: "nif", header: "NIF", className: "whitespace-nowrap font-mono text-xs", cell: (c) => c.nif ?? "—" },
   { key: "telefono", header: "Teléfono", cell: (c) => c.telefono ?? "—" },
   { key: "email", header: "Email", cell: (c) => c.email ?? "—" },
   { key: "direccion", header: "Dirección", hideOnMobile: true, cell: (c) => c.direccion ?? "—" },
 ];
 
 interface ClientesPageProps {
-  searchParams: Promise<{ q?: string | string[] }>;
+  searchParams: Promise<{ q?: string | string[]; pagina?: string | string[] }>;
 }
 
 export default async function ClientesPage({ searchParams }: ClientesPageProps) {
-  const busqueda = normalizeSearch((await searchParams).q);
+  const params = await searchParams;
+  const busqueda = normalizeSearch(params.q);
+  const paginaPedida = parsePagina(params.pagina);
   const { supabase } = await getSessionProfile();
 
-  let query = supabase.from("clientes").select("id, nombre, telefono, email, direccion").order("nombre");
-  if (busqueda) query = query.ilike("nombre", toIlikeContains(busqueda));
-  const { data, error } = await query.overrideTypes<ClienteFila[], { merge: false }>();
-  const clientes = data ?? [];
+  const consulta = (head = false) => {
+    let query = supabase
+      .from("clientes")
+      .select("id, nombre, nif, telefono, email, direccion", { count: "exact", head });
+    if (busqueda) query = query.ilike("nombre", toIlikeContains(busqueda));
+    return query.order("nombre").order("id");
+  };
+  const { filas: clientes, total, error } = await leerPagina(
+    paginaPedida,
+    (desde, hasta) => consulta().range(desde, hasta).overrideTypes<ClienteFila[], { merge: false }>(),
+    () => consulta(true),
+  );
+  const estado = paginacion(paginaPedida, total);
+  const href = (pagina: number) => hrefPagina("/clientes", { q: busqueda }, pagina);
 
   const nuevo = (
     <LinkButton href="/clientes/nuevo" variant="primary">
@@ -48,8 +64,8 @@ export default async function ClientesPage({ searchParams }: ClientesPageProps) 
         title="Clientes"
         description={
           error ? undefined : busqueda
-            ? `${clientes.length} ${clientes.length === 1 ? "resultado" : "resultados"} para «${busqueda}»`
-            : `${clientes.length} ${clientes.length === 1 ? "cliente" : "clientes"}`
+            ? `${total} ${total === 1 ? "resultado" : "resultados"} para «${busqueda}»`
+            : `${total} ${total === 1 ? "cliente" : "clientes"}`
         }
         actions={nuevo}
       />
@@ -76,6 +92,8 @@ export default async function ClientesPage({ searchParams }: ClientesPageProps) 
 
       {error ? (
         <Alert title="No se han podido cargar los clientes">{dbErrorMessage(error)}</Alert>
+      ) : estado.fueraDeRango ? (
+        <PaginaFueraDeRango estado={estado} href={href} />
       ) : clientes.length === 0 ? (
         busqueda ? (
           <EmptyState
@@ -106,6 +124,7 @@ export default async function ClientesPage({ searchParams }: ClientesPageProps) 
             rowKey={(c) => c.id}
             rowHref={(c) => `/clientes/${c.id}`}
           />
+          <Paginacion estado={estado} total={total} href={href} label="Páginas de clientes" />
           {busqueda && (
             <p className="mt-4 text-sm">
               <Link href="/clientes" className="font-medium text-amber-700 hover:underline">

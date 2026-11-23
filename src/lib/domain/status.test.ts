@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canTransition, ESTADOS_PRESUPUESTO, nextActions, type EstadoPresupuesto } from "./status";
+import { canMarkAccepted, canTransition, ESTADOS_PRESUPUESTO, nextActions, type EstadoPresupuesto } from "./status";
 
 const permitidas: [EstadoPresupuesto, EstadoPresupuesto][] = [
   ["borrador", "enviado"],
@@ -37,20 +37,45 @@ describe("canTransition", () => {
   });
 });
 
+describe("canMarkAccepted", () => {
+  it("solo gerencia y con la validez vigente", () => {
+    expect(canMarkAccepted("admin", false)).toBe(true);
+    expect(canMarkAccepted("admin", true)).toBe(false);
+    expect(canMarkAccepted("empleado", false)).toBe(false);
+    expect(canMarkAccepted("empleado", true)).toBe(false);
+  });
+});
+
 describe("nextActions", () => {
-  it("borrador: enviar", () => {
+  it("borrador: enviar (sin enlace todavía, tampoco para gerencia)", () => {
     expect(nextActions("borrador", "empleado")).toEqual(["enviar"]);
     expect(nextActions("borrador", "admin")).toEqual(["enviar"]);
   });
 
-  it("enviado: copiar enlace, aceptar o rechazar", () => {
-    const esperadas = ["copiar_enlace", "marcar_aceptado", "marcar_rechazado"];
-    expect(nextActions("enviado", "empleado")).toEqual(esperadas);
-    expect(nextActions("enviado", "admin")).toEqual(esperadas);
+  it("enviado · gerencia: copiar enlace, aceptar, rechazar y regenerar el enlace", () => {
+    expect(nextActions("enviado", "admin")).toEqual([
+      "copiar_enlace",
+      "marcar_aceptado",
+      "marcar_rechazado",
+      "regenerar_enlace",
+    ]);
   });
 
-  it("aceptado: facturar solo si es admin", () => {
-    expect(nextActions("aceptado", "admin")).toEqual(["facturar"]);
+  it("enviado · empleado: copiar enlace y rechazar; no puede darlo por aceptado ni regenerar el enlace", () => {
+    expect(nextActions("enviado", "empleado")).toEqual(["copiar_enlace", "marcar_rechazado"]);
+    expect(nextActions("enviado", "empleado", { vencido: true })).toEqual(["copiar_enlace", "marcar_rechazado"]);
+  });
+
+  it("enviado y vencido: nadie puede darlo por aceptado", () => {
+    expect(nextActions("enviado", "admin", { vencido: true })).toEqual([
+      "copiar_enlace",
+      "marcar_rechazado",
+      "regenerar_enlace",
+    ]);
+  });
+
+  it("aceptado: facturar y regenerar el enlace solo si es admin", () => {
+    expect(nextActions("aceptado", "admin")).toEqual(["facturar", "regenerar_enlace"]);
     expect(nextActions("aceptado", "empleado")).toEqual([]);
   });
 
@@ -60,8 +85,16 @@ describe("nextActions", () => {
     }
   });
 
-  it("rechazado y facturado no tienen acciones", () => {
-    expect(nextActions("rechazado", "admin")).toEqual([]);
-    expect(nextActions("facturado", "admin")).toEqual([]);
+  it("marcar_aceptado solo aparece en enviado", () => {
+    for (const estado of ESTADOS_PRESUPUESTO.filter((e) => e !== "enviado")) {
+      expect(nextActions(estado, "admin")).not.toContain("marcar_aceptado");
+    }
+  });
+
+  it("rechazado y facturado: solo gerencia puede regenerar el enlace", () => {
+    expect(nextActions("rechazado", "admin")).toEqual(["regenerar_enlace"]);
+    expect(nextActions("facturado", "admin")).toEqual(["regenerar_enlace"]);
+    expect(nextActions("rechazado", "empleado")).toEqual([]);
+    expect(nextActions("facturado", "empleado")).toEqual([]);
   });
 });

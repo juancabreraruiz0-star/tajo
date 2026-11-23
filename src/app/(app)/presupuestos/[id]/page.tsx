@@ -20,7 +20,7 @@ import { budgetTotals, lineTotalCents } from "@/lib/domain/totals";
 import { isUuid } from "@/lib/domain/validation";
 import { getRequestOrigin } from "@/lib/request-origin";
 import type { Presupuesto, PresupuestoLinea } from "@/lib/types";
-import { CambiarEstado, EnlacePublico, Facturar } from "./acciones";
+import { CambiarEstado, EnlacePublico, Facturar, RegenerarEnlace } from "./acciones";
 
 export const metadata: Metadata = { title: "Presupuesto" };
 
@@ -50,6 +50,20 @@ function Dato({ label, children }: { label: string; children: ReactNode }) {
 
 const pendiente = <span className="text-stone-400">—</span>;
 
+/** Quién y por dónde se aceptó (D9). */
+function textoAceptacion(presupuesto: Presupuesto, nombreAceptadoPor: string | null): string | null {
+  switch (presupuesto.aceptado_canal) {
+    case "enlace":
+      return "Aceptado por el cliente desde el enlace";
+    case "interno":
+      return nombreAceptadoPor
+        ? `Dado por aceptado por ${nombreAceptadoPor} (gerencia)`
+        : "Dado por aceptado por gerencia";
+    default:
+      return null;
+  }
+}
+
 export default async function PresupuestoPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   if (!isUuid(id)) notFound();
@@ -60,7 +74,10 @@ export default async function PresupuestoPage({ params }: { params: Promise<{ id
   const [presupuestoRes, lineasRes] = await Promise.all([
     supabase
       .from("presupuestos")
-      .select("id, empresa_id, cliente_id, numero, titulo, estado, iva_pct, validez_dias, token, created_at, enviado_at, aceptado_at")
+      .select(
+        "id, empresa_id, cliente_id, numero, titulo, estado, iva_pct, validez_dias, token, created_at, enviado_at, " +
+          "aceptado_at, aceptado_por, aceptado_canal",
+      )
       .eq("id", id)
       .maybeSingle<Presupuesto>(),
     supabase
@@ -81,7 +98,10 @@ export default async function PresupuestoPage({ params }: { params: Promise<{ id
   const lineasBase = (lineasRes.data ?? []).map((l) => ({ ...l, cantidad: Number(l.cantidad) }));
   const materialIds = [...new Set(lineasBase.flatMap((l) => (l.material_id ? [l.material_id] : [])))];
 
-  const [clienteRes, materialesRes, facturaRes, origin] = await Promise.all([
+  // Gerencia puede regenerar el enlace en cualquier estado salvo borrador: también hace falta el origen.
+  const necesitaOrigen = presupuesto.estado === "enviado" || (admin && presupuesto.estado !== "borrador");
+
+  const [clienteRes, materialesRes, facturaRes, aceptadoPorRes, origin] = await Promise.all([
     supabase.from("clientes").select("id, nombre").eq("id", presupuesto.cliente_id).maybeSingle<{ id: string; nombre: string }>(),
     materialIds.length > 0
       ? supabase
@@ -94,7 +114,10 @@ export default async function PresupuestoPage({ params }: { params: Promise<{ id
     admin && presupuesto.estado === "facturado"
       ? supabase.from("facturas").select("id, numero").eq("presupuesto_id", id).maybeSingle<{ id: string; numero: string }>()
       : null,
-    presupuesto.estado === "enviado" ? getRequestOrigin() : null,
+    presupuesto.aceptado_por
+      ? supabase.from("perfiles").select("nombre").eq("id", presupuesto.aceptado_por).maybeSingle<{ nombre: string }>()
+      : null,
+    necesitaOrigen ? getRequestOrigin() : null,
   ]);
 
   const unidades = new Map((materialesRes?.data ?? []).map((m) => [m.id, m.unidad]));
@@ -108,13 +131,15 @@ export default async function PresupuestoPage({ params }: { params: Promise<{ id
     presupuesto.iva_pct,
   );
 
-  const acciones = nextActions(presupuesto.estado, perfil.rol);
+  const validoHasta = validUntil(presupuesto.created_at, presupuesto.validez_dias);
+  // Misma regla que aceptar_presupuesto() y que el trigger (0004): vencido, nadie puede aceptarlo.
+  const vencido = presupuesto.estado === "enviado" && isExpired(presupuesto.created_at, presupuesto.validez_dias);
+  const acciones = nextActions(presupuesto.estado, perfil.rol, { vencido });
+  const aceptacion = textoAceptacion(presupuesto, aceptadoPorRes?.data?.nombre ?? null);
   const cliente = clienteRes.data;
   const factura = facturaRes?.data ?? null;
-  const errorCarga = lineasRes.error ?? clienteRes.error ?? materialesRes?.error ?? facturaRes?.error ?? null;
-  const validoHasta = validUntil(presupuesto.created_at, presupuesto.validez_dias);
-  // Misma regla que aceptar_presupuesto() (0003) y que la página pública: vencido, el cliente ya no puede aceptar.
-  const vencido = presupuesto.estado === "enviado" && isExpired(presupuesto.created_at, presupuesto.validez_dias);
+  const errorCarga =
+    lineasRes.error ?? clienteRes.error ?? materialesRes?.error ?? facturaRes?.error ?? aceptadoPorRes?.error ?? null;
 
   return (
     <>
@@ -144,8 +169,8 @@ export default async function PresupuestoPage({ params }: { params: Promise<{ id
       )}
       {vencido && (
         <Alert tone="warning" className="mb-6">
-          La validez venció el {formatFecha(validoHasta)}: el cliente ya no puede aceptarlo desde el enlace. Puedes
-          marcarlo como aceptado o rechazado manualmente.
+          La validez venció el {formatFecha(validoHasta)}: el cliente ya no puede aceptarlo desde el enlace ni se puede
+          dar por aceptado. Puedes marcarlo como rechazado y preparar uno nuevo con la validez al día.
         </Alert>
       )}
 
@@ -167,7 +192,16 @@ export default async function PresupuestoPage({ params }: { params: Promise<{ id
                 {presupuesto.validez_dias} días · hasta el {formatFecha(validoHasta)}
               </Dato>
               <Dato label="Enviado">{presupuesto.enviado_at ? formatFecha(presupuesto.enviado_at) : pendiente}</Dato>
-              <Dato label="Aceptado">{presupuesto.aceptado_at ? formatFecha(presupuesto.aceptado_at) : pendiente}</Dato>
+              <Dato label="Aceptado">
+                {presupuesto.aceptado_at ? (
+                  <>
+                    {formatFecha(presupuesto.aceptado_at)}
+                    {aceptacion && <span className="block text-xs text-stone-600">{aceptacion}</span>}
+                  </>
+                ) : (
+                  pendiente
+                )}
+              </Dato>
               <Dato label="IVA">{presupuesto.iva_pct} %</Dato>
             </dl>
           </Card>
@@ -233,17 +267,20 @@ export default async function PresupuestoPage({ params }: { params: Promise<{ id
               <>
                 {acciones.includes("copiar_enlace") && <EnlacePublico token={presupuesto.token} serverOrigin={origin} />}
                 <p className="border-t border-stone-200 pt-4">
-                  {vencido ? "El enlace ya no deja aceptar." : "El cliente puede aceptarlo desde el enlace."} Si te
-                  responde por otra vía, márcalo aquí:
+                  {vencido
+                    ? "La validez ha vencido: ya no se puede aceptar."
+                    : admin
+                      ? "El cliente puede aceptarlo desde el enlace. Si te lo confirma por otra vía (teléfono, correo), puedes darlo por aceptado tú; quedará constancia de que lo hizo gerencia."
+                      : "El cliente puede aceptarlo desde el enlace. Si te lo confirma por otra vía, avisa a gerencia para que lo dé por aceptado."}
                 </p>
                 <div className="flex flex-wrap items-start gap-2">
                   {acciones.includes("marcar_aceptado") && (
                     <CambiarEstado
                       id={id}
                       destino="aceptado"
-                      label="Marcar como aceptado"
+                      label="Dar por aceptado"
                       pendingText="Guardando…"
-                      confirmacion="¿Marcar el presupuesto como aceptado por el cliente?"
+                      confirmacion="¿Dar el presupuesto por aceptado? Quedará registrado que lo has aceptado tú (gerencia) y no el cliente desde el enlace."
                     />
                   )}
                   {acciones.includes("marcar_rechazado") && (
@@ -263,7 +300,12 @@ export default async function PresupuestoPage({ params }: { params: Promise<{ id
             {presupuesto.estado === "aceptado" &&
               (acciones.includes("facturar") ? (
                 <>
-                  <p>El cliente lo ha aceptado. Al facturarlo se descuenta del almacén el material de las partidas.</p>
+                  <p>
+                    {presupuesto.aceptado_canal === "interno"
+                      ? "Gerencia lo ha dado por aceptado."
+                      : "El cliente lo ha aceptado."}{" "}
+                    Al facturarlo se descuenta del almacén el material de las partidas. El cliente tiene que tener NIF.
+                  </p>
                   <div className="flex flex-wrap gap-2">
                     <Facturar id={id} />
                   </div>
@@ -286,6 +328,13 @@ export default async function PresupuestoPage({ params }: { params: Promise<{ id
               ))}
 
             {presupuesto.estado === "rechazado" && <p>El cliente lo ha rechazado. Ya no se puede aceptar ni facturar.</p>}
+
+            {acciones.includes("regenerar_enlace") && (
+              <div className="space-y-2 border-t border-stone-200 pt-4">
+                <p>¿El enlace ha llegado a quien no debía? Genera uno nuevo: el anterior dejará de funcionar.</p>
+                <RegenerarEnlace id={id} serverOrigin={origin} enlaceVisible={acciones.includes("copiar_enlace")} />
+              </div>
+            )}
           </CardBody>
         </Card>
       </div>

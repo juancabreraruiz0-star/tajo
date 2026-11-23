@@ -9,21 +9,25 @@ import { dbErrorMessage } from "@/lib/domain/errors";
 import { lineasCuadranConBase } from "@/lib/domain/facturacion";
 import { formatEuros } from "@/lib/domain/money";
 import { formatQuantity } from "@/lib/domain/quantity";
-import { lineTotalCents } from "@/lib/domain/totals";
 import { isUuid } from "@/lib/domain/validation";
-import type { Cliente, Empresa, Factura, Presupuesto, PresupuestoLinea } from "@/lib/types";
+import type { Factura, FacturaLinea, Presupuesto } from "@/lib/types";
 import { DescargarPdf } from "./imprimir";
 
-type ClienteFactura = Pick<Cliente, "id" | "nombre" | "direccion" | "telefono" | "email">;
-type PresupuestoFactura = Pick<Presupuesto, "id" | "numero" | "titulo" | "iva_pct">;
-type LineaFila = Pick<PresupuestoLinea, "id" | "orden" | "descripcion" | "cantidad" | "precio_cents" | "material_id">;
+type PresupuestoFactura = Pick<Presupuesto, "id" | "numero" | "titulo">;
+type LineaFila = Pick<FacturaLinea, "id" | "orden" | "descripcion" | "unidad" | "cantidad" | "precio_cents" | "importe_cents">;
 
-/** La factura (solo admin). Compartida por la página y los metadatos: una sola consulta por petición. */
+/**
+ * La factura (solo admin) con su copia fija de cliente, empresa e IVA (0004). Compartida por la página y los
+ * metadatos: una sola consulta por petición.
+ */
 const cargarFactura = cache(async (id: string) => {
   const { supabase } = await requireAdmin();
   return supabase
     .from("facturas")
-    .select("id, empresa_id, presupuesto_id, cliente_id, numero, fecha, base_cents, iva_cents, total_cents")
+    .select(
+      "id, empresa_id, presupuesto_id, cliente_id, numero, fecha, base_cents, iva_cents, total_cents, " +
+        "cliente_nombre, cliente_nif, cliente_direccion, empresa_nombre, empresa_cif, empresa_direccion, iva_pct",
+    )
     .eq("id", id)
     .maybeSingle<Factura>();
 });
@@ -40,27 +44,13 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   return { title: data ? `Factura ${data.numero}` : "Factura" };
 }
 
-function Contacto({ telefono, email }: { telefono: string | null; email: string | null }) {
-  return (
-    <>
-      {telefono && (
-        <p>
-          <a href={`tel:${telefono.replace(/[^\d+]/g, "")}`} className="hover:text-amber-700 hover:underline">
-            {telefono}
-          </a>
-        </p>
-      )}
-      {email && (
-        <p className="break-all">
-          <a href={`mailto:${email}`} className="hover:text-amber-700 hover:underline">
-            {email}
-          </a>
-        </p>
-      )}
-    </>
-  );
-}
+const sinDato = <span className="text-stone-400">—</span>;
 
+/**
+ * Factura emitida. Se pinta solo con la copia que se guardó al facturar (facturas + factura_lineas): si después
+ * cambian el cliente, la empresa o los materiales, la factura sigue igual. Del presupuesto solo se leen número y
+ * título, que no cambian una vez enviado.
+ */
 export default async function FacturaPage({ params }: PageProps) {
   const { id } = await params;
   if (!isUuid(id)) notFound();
@@ -73,53 +63,24 @@ export default async function FacturaPage({ params }: PageProps) {
   const factura = facturaRes.data;
   if (!factura) notFound();
 
-  const [empresaRes, clienteRes, presupuestoRes, lineasRes] = await Promise.all([
-    supabase
-      .from("empresas")
-      .select("id, nombre, cif, direccion, telefono, email")
-      .eq("id", factura.empresa_id)
-      .maybeSingle<Empresa>(),
-    supabase
-      .from("clientes")
-      .select("id, nombre, direccion, telefono, email")
-      .eq("id", factura.cliente_id)
-      .maybeSingle<ClienteFactura>(),
+  const [presupuestoRes, lineasRes] = await Promise.all([
     supabase
       .from("presupuestos")
-      .select("id, numero, titulo, iva_pct")
+      .select("id, numero, titulo")
       .eq("id", factura.presupuesto_id)
       .maybeSingle<PresupuestoFactura>(),
     supabase
-      .from("presupuesto_lineas")
-      .select("id, orden, descripcion, cantidad, precio_cents, material_id")
-      .eq("presupuesto_id", factura.presupuesto_id)
+      .from("factura_lineas")
+      .select("id, orden, descripcion, unidad, cantidad, precio_cents, importe_cents")
+      .eq("factura_id", factura.id)
       .order("orden")
-      .order("id")
       .overrideTypes<LineaFila[], { merge: false }>(),
   ]);
 
-  const lineasBase = (lineasRes.data ?? []).map((l) => ({ ...l, cantidad: Number(l.cantidad) }));
-  const materialIds = [...new Set(lineasBase.flatMap((l) => (l.material_id ? [l.material_id] : [])))];
-  const materialesRes =
-    materialIds.length > 0
-      ? await supabase
-          .from("materiales")
-          .select("id, unidad")
-          .in("id", materialIds)
-          .overrideTypes<{ id: string; unidad: string }[], { merge: false }>()
-      : null;
-  const unidades = new Map((materialesRes?.data ?? []).map((m) => [m.id, m.unidad]));
-
-  const lineas = lineasBase.map((l) => ({
-    ...l,
-    unidad: l.material_id ? (unidades.get(l.material_id) ?? null) : null,
-    importeCents: lineTotalCents({ cantidad: l.cantidad, precioCents: l.precio_cents }),
-  }));
-
-  const empresa = empresaRes.data;
-  const cliente = clienteRes.data;
+  // numeric de Postgres puede llegar como texto.
+  const lineas = (lineasRes.data ?? []).map((l) => ({ ...l, cantidad: Number(l.cantidad) }));
   const presupuesto = presupuestoRes.data;
-  const errorCarga = empresaRes.error ?? clienteRes.error ?? presupuestoRes.error ?? lineasRes.error ?? materialesRes?.error;
+  const errorCarga = presupuestoRes.error ?? lineasRes.error;
   const cuadra =
     !lineasRes.error &&
     lineasCuadranConBase(
@@ -156,17 +117,14 @@ export default async function FacturaPage({ params }: PageProps) {
 
         <header className="flex flex-col gap-6 border-b border-stone-200 px-5 py-6 sm:flex-row sm:items-start sm:justify-between sm:px-10 sm:py-8 print:flex-row print:items-start print:justify-between print:px-0">
           <div className="min-w-0">
-            <p className="text-xl font-bold tracking-tight text-stone-900">{empresa?.nombre ?? "—"}</p>
-            {empresa && (
-              <address className="mt-2 space-y-0.5 text-sm text-stone-600 not-italic">
-                {empresa.cif && <p>CIF {empresa.cif}</p>}
-                {empresa.direccion && <p>{empresa.direccion}</p>}
-                <Contacto telefono={empresa.telefono} email={empresa.email} />
-              </address>
-            )}
+            <p className="text-xl font-bold tracking-tight text-stone-900">{factura.empresa_nombre}</p>
+            <address className="mt-2 space-y-0.5 text-sm text-stone-600 not-italic">
+              <p>CIF {factura.empresa_cif ?? "—"}</p>
+              {factura.empresa_direccion && <p>{factura.empresa_direccion}</p>}
+            </address>
           </div>
           <div className="shrink-0 sm:text-right print:text-right">
-            <h1 id="factura-titulo" className="text-2xl font-bold text-stone-900 tabular-nums">
+            <h1 id="factura-titulo" className="text-2xl font-bold whitespace-nowrap text-stone-900 tabular-nums">
               <span className="block text-xs font-semibold tracking-widest text-amber-700 uppercase">Factura</span>
               {factura.numero}
             </h1>
@@ -176,7 +134,7 @@ export default async function FacturaPage({ params }: PageProps) {
               {presupuesto && (
                 <>
                   <dt className="text-stone-500">Presupuesto</dt>
-                  <dd className="text-stone-900 tabular-nums">{presupuesto.numero}</dd>
+                  <dd className="whitespace-nowrap text-stone-900 tabular-nums">{presupuesto.numero}</dd>
                 </>
               )}
             </dl>
@@ -189,13 +147,11 @@ export default async function FacturaPage({ params }: PageProps) {
         >
           <div className="min-w-0">
             <p className="text-xs font-semibold tracking-wide text-stone-500 uppercase">Facturar a</p>
-            <p className="mt-0.5 text-lg font-semibold text-stone-900">{cliente?.nombre ?? "—"}</p>
-            {cliente && (
-              <address className="mt-1 space-y-0.5 text-sm text-stone-600 not-italic">
-                {cliente.direccion && <p>{cliente.direccion}</p>}
-                <Contacto telefono={cliente.telefono} email={cliente.email} />
-              </address>
-            )}
+            <p className="mt-0.5 text-lg font-semibold text-stone-900">{factura.cliente_nombre}</p>
+            <address className="mt-1 space-y-0.5 text-sm text-stone-600 not-italic">
+              <p>NIF {factura.cliente_nif ?? sinDato}</p>
+              {factura.cliente_direccion && <p>{factura.cliente_direccion}</p>}
+            </address>
           </div>
           {presupuesto && (
             <div className="min-w-0">
@@ -221,7 +177,7 @@ export default async function FacturaPage({ params }: PageProps) {
                         {formatQuantity(l.cantidad)}
                         {l.unidad ? ` ${l.unidad}` : ""} × {formatEuros(l.precio_cents)}
                       </span>
-                      <span className="font-semibold text-stone-900 tabular-nums">{formatEuros(l.importeCents)}</span>
+                      <span className="font-semibold text-stone-900 tabular-nums">{formatEuros(l.importe_cents)}</span>
                     </div>
                   </li>
                 ))}
@@ -257,7 +213,7 @@ export default async function FacturaPage({ params }: PageProps) {
                         {formatEuros(l.precio_cents)}
                       </td>
                       <td className="py-3 pl-3 text-right font-medium whitespace-nowrap text-stone-900 tabular-nums">
-                        {formatEuros(l.importeCents)}
+                        {formatEuros(l.importe_cents)}
                       </td>
                     </tr>
                   ))}
@@ -272,7 +228,7 @@ export default async function FacturaPage({ params }: PageProps) {
               <dd className="font-medium text-stone-900 tabular-nums">{formatEuros(factura.base_cents)}</dd>
             </div>
             <div className="flex justify-between gap-4">
-              <dt className="text-stone-600">IVA{presupuesto ? ` (${presupuesto.iva_pct} %)` : ""}</dt>
+              <dt className="text-stone-600">IVA ({factura.iva_pct} %)</dt>
               <dd className="font-medium text-stone-900 tabular-nums">{formatEuros(factura.iva_cents)}</dd>
             </div>
             <div className="flex items-baseline justify-between gap-4 rounded-lg bg-amber-50 px-3 py-3 ring-1 ring-amber-200 ring-inset">

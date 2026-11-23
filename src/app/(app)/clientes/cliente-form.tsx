@@ -38,6 +38,20 @@ export function ClienteForm({ id, initial = {}, cancelHref }: ClienteFormProps) 
           error={error("nombre")}
         />
 
+        <Input
+          label="NIF, NIE o CIF"
+          name="nif"
+          autoComplete="off"
+          autoCapitalize="characters"
+          spellCheck={false}
+          maxLength={20}
+          placeholder="12345678Z o B12345674"
+          hint="Opcional, pero sin NIF no se le puede facturar."
+          defaultValue={value("nif")}
+          error={error("nif")}
+          className="sm:max-w-sm"
+        />
+
         <div className="grid gap-5 sm:grid-cols-2">
           <Input
             label="Teléfono"

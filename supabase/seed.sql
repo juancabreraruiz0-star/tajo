@@ -1,16 +1,30 @@
--- Tajo · seed.sql — datos de demo de Reformas Levante S.L.
--- Cómo se ejecuta: 1) aplicar, en este orden, migrations/0001_esquema.sql → migrations/0002_reglas.sql →
--- migrations/0003_guardar_presupuesto.sql; 2) crear en Authentication → Add user a gerencia@reformaslevante.es y
--- obra@reformaslevante.es; 3) SQL Editor → pegar este fichero entero → Run (el SQL Editor lo ejecuta todo en una
--- sola transacción).
--- Si se vuelve a ejecutar, borra antes los datos de demo de la empresa y reinicia su numeración.
+-- Tajo · seed.sql — datos de demo de Reformas Levante S.L. y de una segunda empresa para comprobar el aislamiento.
+-- Cómo se ejecuta:
+--   1) Aplicar, en este orden, en el SQL Editor (rol postgres): migrations/0001_esquema.sql →
+--      migrations/0002_reglas.sql → migrations/0003_guardar_presupuesto.sql → migrations/0004_auditoria.sql.
+--   2) Crear en Authentication → Add user a gerencia@reformaslevante.es y obra@reformaslevante.es (si no existen).
+--   3) SQL Editor → pegar este fichero entero → Run (el SQL Editor lo ejecuta todo en una sola transacción).
+-- Es reejecutable: borra antes los datos de demo de las dos empresas y reinicia su numeración.
+-- Alta por invitación (D9): este fichero invita a los dos emails de demo. Un usuario que se dé de alta en Auth sin
+-- invitación no tiene perfil y no puede entrar.
 
 -- ============================================================================
--- 0. Modo seed: los triggers de 0002 no bloquean en esta transacción. Hace falta porque el seed borra partidas
---    de presupuestos ya enviados o facturados, inserta presupuestos directamente en su estado final y crea las
---    facturas a mano. set_config(..., true) solo dura hasta el final de la transacción, y set_config no se puede
---    llamar desde la API (está en pg_catalog, que PostgREST no expone): solo el SQL Editor puede activarlo.
+-- 0. Modo seed: los triggers no bloquean en esta transacción. Hace falta porque el seed borra partidas de
+--    presupuestos ya enviados o facturados, inserta presupuestos directamente en su estado final y crea las
+--    facturas con su numeración y fecha. La marca solo cuenta si current_user = 'postgres' (0004) y
+--    set_config(..., true) solo dura hasta el final de la transacción.
 -- ============================================================================
+
+do $$
+begin
+  if current_user <> 'postgres' then
+    raise exception 'Ejecuta el seed como postgres (SQL Editor de Supabase). Usuario actual: %.', current_user;
+  end if;
+  if to_regclass('public.factura_lineas') is null then
+    raise exception 'Falta aplicar migrations/0004_auditoria.sql antes del seed.';
+  end if;
+end;
+$$;
 
 select set_config('tajo.seed', 'on', true);
 
@@ -23,8 +37,41 @@ end;
 $$;
 
 -- ============================================================================
--- 1. Usuarios: deben existir en Auth. Gerencia pasa a admin; obra queda como empleado.
+-- 1. Empresas: CIF de demo con dígito de control correcto. La segunda empresa no tiene usuarios: solo sirve para
+--    comprobar que nadie de Reformas Levante ve sus datos (npm run test:db).
 -- ============================================================================
+
+update public.empresas
+   set cif = 'B12345674'
+ where id = '00000000-0000-0000-0000-000000000001';
+
+insert into public.empresas (id, nombre, cif, direccion, telefono, email)
+values (
+  '00000000-0000-0000-0000-000000000002',
+  'Construcciones Ajenas S.L.',
+  'B30516249',
+  'Gran Vía Escultor Salzillo 9, 30004 Murcia',
+  '968 000 111',
+  'info@construccionesajenas.es'
+)
+on conflict (id) do update
+   set nombre    = excluded.nombre,
+       cif       = excluded.cif,
+       direccion = excluded.direccion,
+       telefono  = excluded.telefono,
+       email     = excluded.email;
+
+-- ============================================================================
+-- 2. Invitaciones y usuarios. Los usuarios deben existir en Auth; su perfil sale de la invitación.
+-- ============================================================================
+
+insert into public.invitaciones (email, empresa_id, rol)
+values
+  ('gerencia@reformaslevante.es', '00000000-0000-0000-0000-000000000001', 'admin'),
+  ('obra@reformaslevante.es',     '00000000-0000-0000-0000-000000000001', 'empleado')
+on conflict (email) do update
+   set empresa_id = excluded.empresa_id,
+       rol        = excluded.rol;
 
 do $$
 declare
@@ -41,21 +88,19 @@ begin
 end;
 $$;
 
--- Upsert por si los usuarios se crearon antes de la migración (sin trigger).
+-- Upsert por si los usuarios se crearon antes de la invitación (sin perfil) o antes de la migración 0001.
 insert into public.perfiles (id, empresa_id, nombre, email, rol)
 select u.id,
-       '00000000-0000-0000-0000-000000000001',
-       case lower(u.email)
+       i.empresa_id,
+       case i.email
          when 'gerencia@reformaslevante.es' then 'Laura Martí — Gerencia'
          else 'Toni Ferrer — Encargado'
        end,
-       lower(u.email),
-       case lower(u.email)
-         when 'gerencia@reformaslevante.es' then 'admin'
-         else 'empleado'
-       end
+       i.email,
+       i.rol
   from auth.users u
- where lower(u.email) in ('gerencia@reformaslevante.es', 'obra@reformaslevante.es')
+  join public.invitaciones i on i.email = lower(u.email)
+ where i.email in ('gerencia@reformaslevante.es', 'obra@reformaslevante.es')
 on conflict (id) do update
    set empresa_id = excluded.empresa_id,
        nombre     = excluded.nombre,
@@ -63,48 +108,55 @@ on conflict (id) do update
        rol        = excluded.rol;
 
 -- ============================================================================
--- 2. Limpieza de datos de demo anteriores (solo de la empresa de demo)
+-- 3. Limpieza de datos de demo anteriores (solo de las dos empresas de demo).
+--    Las partidas de las facturas se borran en cascada con su factura.
 -- ============================================================================
 
-delete from public.facturas           where empresa_id = '00000000-0000-0000-0000-000000000001';
-delete from public.presupuesto_lineas where empresa_id = '00000000-0000-0000-0000-000000000001';
-delete from public.presupuestos       where empresa_id = '00000000-0000-0000-0000-000000000001';
-delete from public.materiales         where empresa_id = '00000000-0000-0000-0000-000000000001';
-delete from public.clientes           where empresa_id = '00000000-0000-0000-0000-000000000001';
-delete from public.contadores         where empresa_id = '00000000-0000-0000-0000-000000000001';
+delete from public.facturas
+ where empresa_id in ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002');
+delete from public.presupuesto_lineas
+ where empresa_id in ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002');
+delete from public.presupuestos
+ where empresa_id in ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002');
+delete from public.materiales
+ where empresa_id in ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002');
+delete from public.clientes
+ where empresa_id in ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002');
+delete from public.contadores
+ where empresa_id in ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002');
 
 -- ============================================================================
--- 3. Clientes
+-- 4. Clientes (con NIF o CIF de demo, con su letra o dígito de control calculado; se comprueba en la sección 10)
 -- ============================================================================
 
-insert into public.clientes (id, empresa_id, nombre, telefono, email, direccion, notas, created_at)
-select v.id, '00000000-0000-0000-0000-000000000001', v.nombre, v.telefono, v.email, v.direccion, v.notas,
+insert into public.clientes (id, empresa_id, nombre, nif, telefono, email, direccion, notas, created_at)
+select v.id, '00000000-0000-0000-0000-000000000001', v.nombre, v.nif, v.telefono, v.email, v.direccion, v.notas,
        now() - make_interval(days => v.dias)
   from (values
-    ('10000000-0000-4000-8000-000000000001'::uuid, 'Carmen Puig Soler', '600 112 233', 'carmen.puig@gmail.com',
+    ('10000000-0000-4000-8000-000000000001'::uuid, 'Carmen Puig Soler', '20481537Z', '600 112 233', 'carmen.puig@gmail.com',
      'C/ de Sueca 34, 3º 6ª, 46006 Valencia', 'Piso en Russafa. Mejor llamar por la tarde.', 70),
-    ('10000000-0000-4000-8000-000000000002'::uuid, 'Vicent Llorens Martí', '646 221 908', 'vllorens@hotmail.com',
+    ('10000000-0000-4000-8000-000000000002'::uuid, 'Vicent Llorens Martí', '29176054W', '646 221 908', 'vllorens@hotmail.com',
      'C/ del Doctor Sumsi 12, 4º, 46005 Valencia', null, 66),
-    ('10000000-0000-4000-8000-000000000003'::uuid, 'Comunidad de Propietarios Blasco Ibáñez 88', '963 600 144', 'admin.blascoibanez88@gmail.com',
+    ('10000000-0000-4000-8000-000000000003'::uuid, 'Comunidad de Propietarios Blasco Ibáñez 88', 'H96381272', '963 600 144', 'admin.blascoibanez88@gmail.com',
      'Av. de Blasco Ibáñez 88, 46021 Valencia', 'Trato con el administrador de fincas. Obras en horario de 9 a 14.', 6),
-    ('10000000-0000-4000-8000-000000000004'::uuid, 'Amparo Ferrandis Gil', '655 340 127', 'amparo.ferrandis@gmail.com',
+    ('10000000-0000-4000-8000-000000000004'::uuid, 'Amparo Ferrandis Gil', '44859213J', '655 340 127', 'amparo.ferrandis@gmail.com',
      'C/ Major 21, 46900 Torrent', 'Persona mayor: plato de ducha a ras de suelo.', 48),
-    ('10000000-0000-4000-8000-000000000005'::uuid, 'Josep Ribes Navarro', '678 905 412', 'josepribes@yahoo.es',
+    ('10000000-0000-4000-8000-000000000005'::uuid, 'Josep Ribes Navarro', '73562180S', '678 905 412', 'josepribes@yahoo.es',
      'C/ del Progrés 8, 46011 Valencia', 'Casa en el Cabanyal. Tiene perro, avisar antes de entrar.', 3),
-    ('10000000-0000-4000-8000-000000000006'::uuid, 'Arrocería El Racó S.L.', '961 203 456', 'arroceriaelraco@gmail.com',
+    ('10000000-0000-4000-8000-000000000006'::uuid, 'Arrocería El Racó S.L.', 'B96452131', '961 203 456', 'arroceriaelraco@gmail.com',
      'C/ de la Reina 73, 46011 Valencia', 'Solo pueden cerrar el local los lunes.', 50),
-    ('10000000-0000-4000-8000-000000000007'::uuid, 'María José Sanchis Pons', '699 018 773', 'mjsanchis@gmail.com',
+    ('10000000-0000-4000-8000-000000000007'::uuid, 'María José Sanchis Pons', '48291736Q', '699 018 773', 'mjsanchis@gmail.com',
      'C/ de Cuba 17, 2º 3ª, 46006 Valencia', null, 42),
-    ('10000000-0000-4000-8000-000000000008'::uuid, 'Pedro Alcañiz Romero', '627 444 190', 'pedro.alcaniz@outlook.es',
+    ('10000000-0000-4000-8000-000000000008'::uuid, 'Pedro Alcañiz Romero', '24670395C', '627 444 190', 'pedro.alcaniz@outlook.es',
      'C/ Camí Real 15, 46470 Catarroja', 'Quiere hacer la obra antes de Navidad.', 28),
-    ('10000000-0000-4000-8000-000000000009'::uuid, 'Lucía Esteve Baixauli', '644 778 021', 'lucia.esteve@gmail.com',
+    ('10000000-0000-4000-8000-000000000009'::uuid, 'Lucía Esteve Baixauli', '53018947Z', '644 778 021', 'lucia.esteve@gmail.com',
      'Av. de França 30, 7º 14ª, 46023 Valencia', 'Piso recién comprado, vacío. Llaves en portería.', 12),
-    ('10000000-0000-4000-8000-000000000010'::uuid, 'Clínica Dental Benimaclet S.L.P.', '963 412 980', 'clinicadentalbenimaclet@gmail.com',
+    ('10000000-0000-4000-8000-000000000010'::uuid, 'Clínica Dental Benimaclet S.L.P.', 'B97183420', '963 412 980', 'clinicadentalbenimaclet@gmail.com',
      'C/ d’Emili Baró 50, 46020 Valencia', 'Trabajos fuera del horario de consulta (después de las 20 h).', 30)
-  ) as v(id, nombre, telefono, email, direccion, notas, dias);
+  ) as v(id, nombre, nif, telefono, email, direccion, notas, dias);
 
 -- ============================================================================
--- 4. Materiales (precios en céntimos). Bajo mínimo: azulejo blanco, mampara y cemento cola.
+-- 5. Materiales (precios en céntimos). Bajo mínimo: azulejo blanco, mampara y cemento cola.
 -- ============================================================================
 
 insert into public.materiales (id, empresa_id, nombre, unidad, precio_cents, stock, stock_minimo)
@@ -125,71 +177,92 @@ select v.id, '00000000-0000-0000-0000-000000000001', v.nombre, v.unidad, v.preci
   ) as v(id, nombre, unidad, precio_cents, stock, stock_minimo);
 
 -- ============================================================================
--- 5. Presupuestos (últimos 60 días). Se insertan por fecha para que el trigger
---    los numere en orden con siguiente_numero(): P-AAAA-0001, 0002...
---    Los facturados se fechan respecto al mes actual y al anterior.
+-- 6. Presupuestos (últimos 60 días). El número se calcula aquí por año de creación (hora de Madrid) y orden de
+--    fecha: así, en enero, un presupuesto creado en diciembre lleva el número del año anterior (P-2026-…) y no el
+--    del año en curso. Los contadores se ajustan en la sección 9.
+--    Aceptados y facturados: por el enlace del cliente, salvo «Cambio de ventanas», que gerencia dio por aceptado
+--    por teléfono (aceptado_canal = 'interno').
 -- ============================================================================
 
 with ref as (
   select date_trunc('month', now())                                              as mes,
          date_trunc('month', now()) - interval '1 month'                         as mes_ant,
          greatest(date_trunc('month', now()), date_trunc('day', now()) - interval '1 day') as f4
+),
+gerencia as (
+  select u.id from auth.users u where lower(u.email) = 'gerencia@reformaslevante.es'
+),
+datos as (
+  select v.*
+    from ref
+   cross join lateral (values
+      -- facturado · factura el mes anterior
+      ('30000000-0000-4000-8000-000000000001'::uuid, '10000000-0000-4000-8000-000000000001'::uuid,
+       'Reforma completa de baño', 'facturado', 10, 30,
+       ref.mes_ant + interval '2 days 9 hours', ref.mes_ant + interval '3 days 12 hours', ref.mes_ant + interval '6 days 18 hours', 'enlace'),
+      -- facturado · factura el mes anterior
+      ('30000000-0000-4000-8000-000000000002'::uuid, '10000000-0000-4000-8000-000000000002'::uuid,
+       'Pintura de piso de 90 m²', 'facturado', 10, 30,
+       ref.mes_ant + interval '8 days 10 hours', ref.mes_ant + interval '9 days 11 hours', ref.mes_ant + interval '12 days 20 hours', 'enlace'),
+      -- rechazado
+      ('30000000-0000-4000-8000-000000000003'::uuid, '10000000-0000-4000-8000-000000000006'::uuid,
+       'Alicatado de la cocina del restaurante', 'rechazado', 21, 15,
+       now() - interval '45 days', now() - interval '43 days', null::timestamptz, null::text),
+      -- aceptado (listo para facturar)
+      ('30000000-0000-4000-8000-000000000004'::uuid, '10000000-0000-4000-8000-000000000007'::uuid,
+       'Reforma de cocina', 'aceptado', 10, 30,
+       now() - interval '40 days', now() - interval '38 days', now() - interval '10 days', 'enlace'),
+      -- facturado · factura este mes (día 1)
+      ('30000000-0000-4000-8000-000000000005'::uuid, '10000000-0000-4000-8000-000000000004'::uuid,
+       'Cambio de bañera por plato de ducha', 'facturado', 10, 30,
+       ref.mes - interval '14 days' + interval '10 hours', ref.mes - interval '13 days' + interval '12 hours', ref.mes - interval '3 days' + interval '17 hours', 'enlace'),
+      -- facturado · factura este mes (ayer o día 1)
+      ('30000000-0000-4000-8000-000000000006'::uuid, '10000000-0000-4000-8000-000000000010'::uuid,
+       'Tabique de pladur para nuevo gabinete', 'facturado', 21, 30,
+       ref.f4 - interval '20 days' + interval '9 hours', ref.f4 - interval '18 days' + interval '13 hours', ref.f4 - interval '5 days' + interval '19 hours', 'enlace'),
+      -- aceptado por gerencia (interno), listo para facturar
+      ('30000000-0000-4000-8000-000000000007'::uuid, '10000000-0000-4000-8000-000000000008'::uuid,
+       'Cambio de ventanas a PVC', 'aceptado', 10, 30,
+       now() - interval '26 days', now() - interval '24 days', now() - interval '3 days', 'interno'),
+      -- enviado (pendiente de respuesta)
+      ('30000000-0000-4000-8000-000000000008'::uuid, '10000000-0000-4000-8000-000000000009'::uuid,
+       'Reforma integral de piso', 'enviado', 10, 30,
+       now() - interval '9 days', now() - interval '7 days', null::timestamptz, null::text),
+      -- enviado (pendiente de respuesta)
+      ('30000000-0000-4000-8000-000000000009'::uuid, '10000000-0000-4000-8000-000000000003'::uuid,
+       'Reparación de humedades y pintura del zaguán', 'enviado', 21, 30,
+       now() - interval '5 days', now() - interval '4 days', null::timestamptz, null::text),
+      -- borrador
+      ('30000000-0000-4000-8000-000000000010'::uuid, '10000000-0000-4000-8000-000000000005'::uuid,
+       'Baño de cortesía en planta baja', 'borrador', 10, 30,
+       now() - interval '2 days', null::timestamptz, null::timestamptz, null::text),
+      -- borrador
+      ('30000000-0000-4000-8000-000000000011'::uuid, '10000000-0000-4000-8000-000000000010'::uuid,
+       'Pintura de la sala de espera', 'borrador', 21, 30,
+       now() - interval '1 day', null::timestamptz, null::timestamptz, null::text)
+    ) as v(id, cliente_id, titulo, estado, iva_pct, validez_dias, created_at, enviado_at, aceptado_at, aceptado_canal)
+),
+numerados as (
+  select d.*,
+         extract(year from (d.created_at at time zone 'Europe/Madrid'))::integer as anio,
+         row_number() over (
+           partition by extract(year from (d.created_at at time zone 'Europe/Madrid'))
+           order by d.created_at, d.id
+         ) as orden_anio
+    from datos d
 )
 insert into public.presupuestos
-  (id, empresa_id, cliente_id, titulo, estado, iva_pct, validez_dias, created_at, enviado_at, aceptado_at)
-select v.id, '00000000-0000-0000-0000-000000000001', v.cliente_id, v.titulo, v.estado, v.iva_pct, v.validez_dias,
-       v.created_at, v.enviado_at, v.aceptado_at
-  from ref
- cross join lateral (values
-    -- facturado · factura el mes anterior
-    ('30000000-0000-4000-8000-000000000001'::uuid, '10000000-0000-4000-8000-000000000001'::uuid,
-     'Reforma completa de baño', 'facturado', 10, 30,
-     ref.mes_ant + interval '2 days 9 hours', ref.mes_ant + interval '3 days 12 hours', ref.mes_ant + interval '6 days 18 hours'),
-    -- facturado · factura el mes anterior
-    ('30000000-0000-4000-8000-000000000002'::uuid, '10000000-0000-4000-8000-000000000002'::uuid,
-     'Pintura de piso de 90 m²', 'facturado', 10, 30,
-     ref.mes_ant + interval '8 days 10 hours', ref.mes_ant + interval '9 days 11 hours', ref.mes_ant + interval '12 days 20 hours'),
-    -- rechazado
-    ('30000000-0000-4000-8000-000000000003'::uuid, '10000000-0000-4000-8000-000000000006'::uuid,
-     'Alicatado de la cocina del restaurante', 'rechazado', 21, 15,
-     now() - interval '45 days', now() - interval '43 days', null::timestamptz),
-    -- aceptado (listo para facturar)
-    ('30000000-0000-4000-8000-000000000004'::uuid, '10000000-0000-4000-8000-000000000007'::uuid,
-     'Reforma de cocina', 'aceptado', 10, 30,
-     now() - interval '40 days', now() - interval '38 days', now() - interval '10 days'),
-    -- facturado · factura este mes (día 1)
-    ('30000000-0000-4000-8000-000000000005'::uuid, '10000000-0000-4000-8000-000000000004'::uuid,
-     'Cambio de bañera por plato de ducha', 'facturado', 10, 30,
-     ref.mes - interval '14 days' + interval '10 hours', ref.mes - interval '13 days' + interval '12 hours', ref.mes - interval '3 days' + interval '17 hours'),
-    -- facturado · factura este mes (ayer o día 1)
-    ('30000000-0000-4000-8000-000000000006'::uuid, '10000000-0000-4000-8000-000000000010'::uuid,
-     'Tabique de pladur para nuevo gabinete', 'facturado', 21, 30,
-     ref.f4 - interval '20 days' + interval '9 hours', ref.f4 - interval '18 days' + interval '13 hours', ref.f4 - interval '5 days' + interval '19 hours'),
-    -- aceptado (listo para facturar)
-    ('30000000-0000-4000-8000-000000000007'::uuid, '10000000-0000-4000-8000-000000000008'::uuid,
-     'Cambio de ventanas a PVC', 'aceptado', 10, 30,
-     now() - interval '26 days', now() - interval '24 days', now() - interval '3 days'),
-    -- enviado (pendiente de respuesta)
-    ('30000000-0000-4000-8000-000000000008'::uuid, '10000000-0000-4000-8000-000000000009'::uuid,
-     'Reforma integral de piso', 'enviado', 10, 30,
-     now() - interval '9 days', now() - interval '7 days', null::timestamptz),
-    -- enviado (pendiente de respuesta)
-    ('30000000-0000-4000-8000-000000000009'::uuid, '10000000-0000-4000-8000-000000000003'::uuid,
-     'Reparación de humedades y pintura del zaguán', 'enviado', 21, 30,
-     now() - interval '5 days', now() - interval '4 days', null::timestamptz),
-    -- borrador
-    ('30000000-0000-4000-8000-000000000010'::uuid, '10000000-0000-4000-8000-000000000005'::uuid,
-     'Baño de cortesía en planta baja', 'borrador', 10, 30,
-     now() - interval '2 days', null::timestamptz, null::timestamptz),
-    -- borrador
-    ('30000000-0000-4000-8000-000000000011'::uuid, '10000000-0000-4000-8000-000000000010'::uuid,
-     'Pintura de la sala de espera', 'borrador', 21, 30,
-     now() - interval '1 day', null::timestamptz, null::timestamptz)
-  ) as v(id, cliente_id, titulo, estado, iva_pct, validez_dias, created_at, enviado_at, aceptado_at)
- order by v.created_at;
+  (id, empresa_id, cliente_id, numero, titulo, estado, iva_pct, validez_dias, created_at, enviado_at, aceptado_at,
+   aceptado_canal, aceptado_por)
+select n.id, '00000000-0000-0000-0000-000000000001', n.cliente_id,
+       'P-' || n.anio || '-' || lpad(n.orden_anio::text, 4, '0'),
+       n.titulo, n.estado, n.iva_pct, n.validez_dias, n.created_at, n.enviado_at, n.aceptado_at,
+       n.aceptado_canal,
+       case when n.aceptado_canal = 'interno' then (select g.id from gerencia g) end
+  from numerados n;
 
 -- ============================================================================
--- 6. Partidas (algunas vinculadas a materiales)
+-- 7. Partidas (algunas vinculadas a materiales)
 -- ============================================================================
 
 insert into public.presupuesto_lineas
@@ -270,10 +343,11 @@ select '00000000-0000-0000-0000-000000000001', v.presupuesto_id, v.orden, v.desc
   ) as v(presupuesto_id, orden, descripcion, cantidad, precio_cents, material_id);
 
 -- ============================================================================
--- 7. Facturas de los 4 presupuestos facturados (2 el mes anterior, 2 este mes).
---    No se usa facturar_presupuesto() porque en el SQL Editor no hay sesión: se insertan
---    directamente con los mismos totales (totales_presupuesto) y numeradas por fecha
---    con siguiente_numero(): F-AAAA-0001...
+-- 8. Facturas de los 4 presupuestos facturados (2 el mes anterior, 2 este mes), con su copia fija y sus partidas
+--    (crear_factura_copia() de 0004, la misma que usa facturar_presupuesto()). No se usa facturar_presupuesto()
+--    porque en el SQL Editor no hay sesión y porque el stock de la sección 5 ya es el final.
+--    Numeración por el año de la fecha de la factura (corrige el fallo de enero: una factura de diciembre lleva el
+--    número de su año).
 -- ============================================================================
 
 do $$
@@ -281,33 +355,166 @@ declare
   r record;
 begin
   for r in
-    select p.id, p.empresa_id, p.cliente_id, f.fecha
-      from (values
-        ('30000000-0000-4000-8000-000000000001'::uuid,
-         (date_trunc('month', now()) - interval '1 month' + interval '9 days')::date),
-        ('30000000-0000-4000-8000-000000000002'::uuid,
-         (date_trunc('month', now()) - interval '1 month' + interval '18 days')::date),
-        ('30000000-0000-4000-8000-000000000005'::uuid,
-         date_trunc('month', now())::date),
-        ('30000000-0000-4000-8000-000000000006'::uuid,
-         greatest(date_trunc('month', now()), date_trunc('day', now()) - interval '1 day')::date)
-      ) as f(presupuesto_id, fecha)
-      join public.presupuestos p on p.id = f.presupuesto_id
-     order by f.fecha, p.created_at
+    with fechas as (
+      select f.presupuesto_id, f.fecha
+        from (values
+          ('30000000-0000-4000-8000-000000000001'::uuid,
+           (date_trunc('month', now()) - interval '1 month' + interval '9 days')::date),
+          ('30000000-0000-4000-8000-000000000002'::uuid,
+           (date_trunc('month', now()) - interval '1 month' + interval '18 days')::date),
+          ('30000000-0000-4000-8000-000000000005'::uuid,
+           date_trunc('month', now())::date),
+          ('30000000-0000-4000-8000-000000000006'::uuid,
+           greatest(date_trunc('month', now()), date_trunc('day', now()) - interval '1 day')::date)
+        ) as f(presupuesto_id, fecha)
+    )
+    select p.id,
+           x.fecha,
+           'F-' || extract(year from x.fecha)::integer || '-'
+             || lpad((row_number() over (partition by extract(year from x.fecha) order by x.fecha, p.created_at))::text, 4, '0')
+             as numero
+      from fechas x
+      join public.presupuestos p on p.id = x.presupuesto_id
+     order by x.fecha, p.created_at
   loop
-    insert into public.facturas
-      (empresa_id, presupuesto_id, cliente_id, numero, fecha, base_cents, iva_cents, total_cents, created_at)
-    select r.empresa_id,
-           r.id,
-           r.cliente_id,
-           public.siguiente_numero(r.empresa_id, 'F'),
-           r.fecha,
-           t.base_cents,
-           t.iva_cents,
-           t.total_cents,
-           least((r.fecha + interval '10 hours')::timestamptz, now())
-      from public.totales_presupuesto(r.id) t;
+    perform public.crear_factura_copia(r.id, r.numero, r.fecha, least((r.fecha + interval '10 hours')::timestamptz, now()));
   end loop;
+end;
+$$;
+
+-- ============================================================================
+-- 9. Segunda empresa (Construcciones Ajenas S.L.): un cliente y un presupuesto enviado, sin usuarios.
+-- ============================================================================
+
+insert into public.clientes (id, empresa_id, nombre, nif, telefono, email, direccion, notas, created_at)
+values (
+  '10000000-0000-4000-8000-000000000101',
+  '00000000-0000-0000-0000-000000000002',
+  'Promociones del Segura S.A.',
+  'A30872154',
+  '968 222 333',
+  'obras@promocionesdelsegura.es',
+  'Av. de la Libertad 5, 30009 Murcia',
+  'Dato de otra empresa: Reformas Levante no debe verlo nunca.',
+  now() - interval '20 days'
+);
+
+insert into public.presupuestos
+  (id, empresa_id, cliente_id, numero, titulo, estado, iva_pct, validez_dias, created_at, enviado_at)
+values (
+  '30000000-0000-4000-8000-000000000101',
+  '00000000-0000-0000-0000-000000000002',
+  '10000000-0000-4000-8000-000000000101',
+  'P-' || extract(year from ((now() - interval '3 days') at time zone 'Europe/Madrid'))::integer || '-0001',
+  'Rehabilitación de fachada',
+  'enviado',
+  21,
+  30,
+  now() - interval '3 days',
+  now() - interval '2 days'
+);
+
+insert into public.presupuesto_lineas
+  (empresa_id, presupuesto_id, orden, descripcion, cantidad, precio_cents, material_id)
+values
+  ('00000000-0000-0000-0000-000000000002', '30000000-0000-4000-8000-000000000101', 1,
+   'Andamio y saneado de fachada (m²)', 180, 3500, null),
+  ('00000000-0000-0000-0000-000000000002', '30000000-0000-4000-8000-000000000101', 2,
+   'Pintura de silicato a dos manos (m²)', 180, 1800, null);
+
+-- ============================================================================
+-- 10. Contadores de numeración: el último número usado por empresa, prefijo y año.
+-- ============================================================================
+
+insert into public.contadores (empresa_id, prefijo, anio, ultimo)
+select d.empresa_id, d.prefijo, d.anio, max(d.n)
+  from (
+    select p.empresa_id, 'P' as prefijo,
+           split_part(p.numero, '-', 2)::integer as anio,
+           split_part(p.numero, '-', 3)::integer as n
+      from public.presupuestos p
+     where p.empresa_id in ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002')
+    union all
+    select f.empresa_id, 'F',
+           split_part(f.numero, '-', 2)::integer,
+           split_part(f.numero, '-', 3)::integer
+      from public.facturas f
+     where f.empresa_id in ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002')
+  ) d
+ group by d.empresa_id, d.prefijo, d.anio
+on conflict (empresa_id, prefijo, anio) do update
+   set ultimo = excluded.ultimo;
+
+-- ============================================================================
+-- 11. Comprobaciones: NIF/CIF de demo con control correcto y avisos.
+-- ============================================================================
+
+do $$
+declare
+  r        record;
+  v_num    text;
+  v_suma   integer;
+  v_d      integer;
+  v_ctrl   integer;
+  v_ok     boolean;
+  c_letras constant text := 'TRWAGMYFPDXBNJZSQVHLCKE';
+begin
+  for r in
+    select c.nombre, c.nif from public.clientes c
+     where c.empresa_id in ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002')
+    union all
+    select e.nombre, e.cif from public.empresas e
+     where e.id in ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002')
+  loop
+    if r.nif ~ '^[0-9]{8}[A-Z]$' then
+      -- DNI: letra = TRWAGMYFPDXBNJZSQVHLCKE[número mod 23].
+      v_ok := substr(c_letras, (left(r.nif, 8)::integer % 23) + 1, 1) = right(r.nif, 1);
+    elsif r.nif ~ '^[XYZ][0-9]{7}[A-Z]$' then
+      -- NIE: X/Y/Z valen 0/1/2 y se calcula como un DNI.
+      v_num := translate(left(r.nif, 1), 'XYZ', '012') || substr(r.nif, 2, 7);
+      v_ok := substr(c_letras, (v_num::integer % 23) + 1, 1) = right(r.nif, 1);
+    elsif r.nif ~ '^[ABCDEFGHJNPQRSUVW][0-9]{7}[0-9A-J]$' then
+      -- CIF: posiciones pares se suman; impares se doblan y se suman sus cifras; control = (10 - suma mod 10) mod 10.
+      v_suma := 0;
+      for i in 1..7 loop
+        v_d := substr(r.nif, i + 1, 1)::integer;
+        if i % 2 = 0 then
+          v_suma := v_suma + v_d;
+        else
+          v_suma := v_suma + (2 * v_d) / 10 + (2 * v_d) % 10;
+        end if;
+      end loop;
+      v_ctrl := (10 - v_suma % 10) % 10;
+      v_ok := case
+        when left(r.nif, 1) in ('A', 'B', 'E', 'H') then right(r.nif, 1) = v_ctrl::text
+        when left(r.nif, 1) in ('N', 'P', 'Q', 'R', 'S', 'W') then right(r.nif, 1) = substr('JABCDEFGHI', v_ctrl + 1, 1)
+        else right(r.nif, 1) in (v_ctrl::text, substr('JABCDEFGHI', v_ctrl + 1, 1))
+      end;
+    else
+      v_ok := false;
+    end if;
+
+    if not v_ok then
+      raise exception 'NIF/CIF de demo no válido: % (%).', coalesce(r.nif, 'sin NIF'), r.nombre;
+    end if;
+  end loop;
+end;
+$$;
+
+-- Perfiles sin invitación (por ejemplo, alguien que se registró cuando el alta estaba abierta): se avisa para que
+-- gerencia los revise y, si no los conoce, los borre en Authentication → Users.
+do $$
+declare
+  v_sin_invitacion text;
+begin
+  select string_agg(coalesce(p.email, p.id::text), ', ')
+    into v_sin_invitacion
+    from public.perfiles p
+   where not exists (select 1 from public.invitaciones i where i.email = lower(p.email));
+
+  if v_sin_invitacion is not null then
+    raise notice 'Perfiles sin invitación (revísalos): %', v_sin_invitacion;
+  end if;
 end;
 $$;
 

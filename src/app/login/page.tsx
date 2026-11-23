@@ -11,11 +11,6 @@ export const metadata: Metadata = {
   title: "Entrar",
 };
 
-const CUENTAS_DEMO = [
-  { email: "gerencia@reformaslevante.es", rol: "Gerencia" },
-  { email: "obra@reformaslevante.es", rol: "Encargado de obra" },
-] as const;
-
 interface LoginPageProps {
   searchParams: Promise<{ error?: string | string[] }>;
 }
@@ -56,8 +51,8 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           <h1 className="mb-5 text-lg font-semibold text-stone-900">Entra en tu cuenta</h1>
 
           {sinPerfil && (
-            <Alert className="mb-4">
-              Tu usuario no tiene un perfil de empresa asignado. Pide a gerencia que lo revise.
+            <Alert className="mb-4" title="Sin acceso">
+              Tu usuario no tiene acceso a ninguna empresa. Pide una invitación a gerencia.
             </Alert>
           )}
 
@@ -74,24 +69,6 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
             </Alert>
           )}
         </Card>
-
-        <section
-          aria-labelledby="demo-titulo"
-          className="mt-5 rounded-xl border border-stone-200 bg-white/70 px-4 py-3 text-sm text-stone-600"
-        >
-          <h2 id="demo-titulo" className="font-medium text-stone-800">
-            Acceso de demostración
-          </h2>
-          <ul className="mt-2 space-y-1.5">
-            {CUENTAS_DEMO.map((cuenta) => (
-              <li key={cuenta.email} className="flex flex-wrap items-baseline justify-between gap-x-3">
-                <span className="font-mono text-xs break-all text-stone-800 select-all">{cuenta.email}</span>
-                <span className="text-xs text-stone-500">{cuenta.rol}</span>
-              </li>
-            ))}
-          </ul>
-          <p className="mt-2 text-xs text-stone-500">La contraseña se facilita junto al enlace de la prueba.</p>
-        </section>
       </div>
     </main>
   );

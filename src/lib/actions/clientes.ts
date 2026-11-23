@@ -9,7 +9,7 @@ import { readFields, type FormState } from "./form-state";
 
 export type ClienteFormState = FormState<ClienteField>;
 
-const CAMPOS = ["nombre", "telefono", "email", "direccion", "notas"] as const;
+const CAMPOS = ["nombre", "nif", "telefono", "email", "direccion", "notas"] as const;
 
 /** Alta (id = null) o edición de un cliente. Si va bien, redirige a su ficha. */
 export async function saveCliente(

@@ -4,77 +4,71 @@ import { Alert } from "@/components/ui/alert";
 import { LinkButton } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
+import { PaginaFueraDeRango, Paginacion } from "@/components/ui/paginacion";
 import { Table, type Column } from "@/components/ui/table";
 import { requireAdmin } from "@/lib/auth";
 import { formatFecha } from "@/lib/domain/dates";
 import { dbErrorMessage } from "@/lib/domain/errors";
 import { formatEuros } from "@/lib/domain/money";
+import { hrefPagina, paginacion, parsePagina } from "@/lib/domain/paginacion";
+import { leerPagina } from "@/lib/paginar";
 import type { Factura } from "@/lib/types";
 
 export const metadata: Metadata = { title: "Facturas" };
 
-type FacturaFila = Pick<Factura, "id" | "numero" | "fecha" | "cliente_id" | "presupuesto_id" | "total_cents">;
-type FacturaListado = FacturaFila & { cliente: string; presupuesto: string };
+/** El cliente sale de la copia fija de la factura (0004), no de la ficha actual del cliente. */
+type FacturaFila = Pick<Factura, "id" | "numero" | "fecha" | "cliente_nombre" | "cliente_nif" | "total_cents">;
 
-const COLUMNAS: Column<FacturaListado>[] = [
-  { key: "numero", header: "Número", primary: true, cell: (f) => f.numero },
-  { key: "fecha", header: "Fecha", cell: (f) => formatFecha(f.fecha) },
-  { key: "cliente", header: "Cliente", cell: (f) => f.cliente },
-  { key: "presupuesto", header: "Presupuesto", hideOnMobile: true, cell: (f) => f.presupuesto },
-  { key: "total", header: "Total", align: "right", cell: (f) => formatEuros(f.total_cents) },
+const NOWRAP = "whitespace-nowrap";
+
+const COLUMNAS: Column<FacturaFila>[] = [
+  { key: "numero", header: "Número", primary: true, className: NOWRAP, cell: (f) => f.numero },
+  { key: "fecha", header: "Fecha", className: NOWRAP, cell: (f) => formatFecha(f.fecha) },
+  { key: "cliente", header: "Cliente", cell: (f) => f.cliente_nombre },
+  {
+    key: "nif",
+    header: "NIF",
+    hideOnMobile: true,
+    className: `${NOWRAP} font-mono text-xs`,
+    cell: (f) => f.cliente_nif ?? "—",
+  },
+  { key: "total", header: "Total", align: "right", className: NOWRAP, cell: (f) => formatEuros(f.total_cents) },
 ];
 
-export default async function FacturasPage() {
+interface FacturasPageProps {
+  searchParams: Promise<{ pagina?: string | string[] }>;
+}
+
+export default async function FacturasPage({ searchParams }: FacturasPageProps) {
+  const paginaPedida = parsePagina((await searchParams).pagina);
   const { supabase } = await requireAdmin();
 
-  const { data, error } = await supabase
-    .from("facturas")
-    .select("id, numero, fecha, cliente_id, presupuesto_id, total_cents")
-    .order("fecha", { ascending: false })
-    .order("numero", { ascending: false })
-    .overrideTypes<FacturaFila[], { merge: false }>();
-  const facturas = data ?? [];
+  const consulta = (head = false) =>
+    supabase
+      .from("facturas")
+      .select("id, numero, fecha, cliente_nombre, cliente_nif, total_cents", { count: "exact", head })
+      .order("fecha", { ascending: false })
+      .order("numero", { ascending: false });
+  const { filas, total, error } = await leerPagina(
+    paginaPedida,
+    (desde, hasta) => consulta().range(desde, hasta).overrideTypes<FacturaFila[], { merge: false }>(),
+    () => consulta(true),
+  );
 
-  let errorDetalle: string | null = null;
-  const clientes = new Map<string, string>();
-  const presupuestos = new Map<string, string>();
-  if (facturas.length > 0) {
-    const [clientesRes, presupuestosRes] = await Promise.all([
-      supabase
-        .from("clientes")
-        .select("id, nombre")
-        .in("id", [...new Set(facturas.map((f) => f.cliente_id))])
-        .overrideTypes<{ id: string; nombre: string }[], { merge: false }>(),
-      supabase
-        .from("presupuestos")
-        .select("id, numero")
-        .in(
-          "id",
-          facturas.map((f) => f.presupuesto_id),
-        )
-        .overrideTypes<{ id: string; numero: string }[], { merge: false }>(),
-    ]);
-    if (clientesRes.error) errorDetalle = dbErrorMessage(clientesRes.error);
-    if (presupuestosRes.error) errorDetalle = dbErrorMessage(presupuestosRes.error);
-    for (const c of clientesRes.data ?? []) clientes.set(c.id, c.nombre);
-    for (const p of presupuestosRes.data ?? []) presupuestos.set(p.id, p.numero);
-  }
-
-  const filas: FacturaListado[] = facturas.map((f) => ({
-    ...f,
-    cliente: clientes.get(f.cliente_id) ?? "—",
-    presupuesto: presupuestos.get(f.presupuesto_id) ?? "—",
-  }));
+  const estado = paginacion(paginaPedida, total);
+  const href = (pagina: number) => hrefPagina("/facturas", {}, pagina);
 
   return (
     <>
       <PageHeader
         title="Facturas"
-        description={error ? undefined : `${filas.length} ${filas.length === 1 ? "factura" : "facturas"}`}
+        description={error ? undefined : `${total} ${total === 1 ? "factura" : "facturas"}`}
       />
 
       {error ? (
         <Alert title="No se han podido cargar las facturas">{dbErrorMessage(error)}</Alert>
+      ) : estado.fueraDeRango ? (
+        <PaginaFueraDeRango estado={estado} href={href} />
       ) : filas.length === 0 ? (
         <EmptyState
           icon={<ReceiptIcon className="size-6" />}
@@ -84,11 +78,6 @@ export default async function FacturasPage() {
         />
       ) : (
         <>
-          {errorDetalle && (
-            <Alert tone="warning" title="Faltan datos del listado" className="mb-4">
-              {errorDetalle} Los nombres de cliente o los números de presupuesto pueden no estar completos.
-            </Alert>
-          )}
           <Table
             caption="Listado de facturas"
             columns={COLUMNAS}
@@ -96,6 +85,7 @@ export default async function FacturasPage() {
             rowKey={(f) => f.id}
             rowHref={(f) => `/facturas/${f.id}`}
           />
+          <Paginacion estado={estado} total={total} href={href} label="Páginas de facturas" />
         </>
       )}
     </>

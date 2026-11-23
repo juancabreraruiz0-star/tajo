@@ -20,17 +20,23 @@ import type { Factura, Material } from "@/lib/types";
 
 type MaterialFila = Pick<Material, "id" | "nombre" | "unidad" | "stock" | "stock_minimo">;
 type FacturaImporte = Pick<Factura, "fecha" | "total_cents">;
-type FacturaFila = Pick<Factura, "id" | "numero" | "fecha" | "cliente_id" | "total_cents">;
-type FacturaReciente = FacturaFila & { cliente: string };
+/** El cliente sale de la copia fija de la factura (0004). */
+type FacturaReciente = Pick<Factura, "id" | "numero" | "fecha" | "cliente_nombre" | "total_cents">;
 
 const MAX_STOCK_BAJO = 5;
 const MAX_ULTIMAS_FACTURAS = 5;
 
 const COLUMNAS_FACTURAS: Column<FacturaReciente>[] = [
-  { key: "numero", header: "Número", primary: true, cell: (f) => f.numero },
-  { key: "fecha", header: "Fecha", cell: (f) => formatFecha(f.fecha) },
-  { key: "cliente", header: "Cliente", cell: (f) => f.cliente },
-  { key: "total", header: "Total", align: "right", cell: (f) => formatEuros(f.total_cents) },
+  { key: "numero", header: "Número", primary: true, className: "whitespace-nowrap", cell: (f) => f.numero },
+  { key: "fecha", header: "Fecha", className: "whitespace-nowrap", cell: (f) => formatFecha(f.fecha) },
+  { key: "cliente", header: "Cliente", cell: (f) => f.cliente_nombre },
+  {
+    key: "total",
+    header: "Total",
+    align: "right",
+    className: "whitespace-nowrap",
+    cell: (f) => formatEuros(f.total_cents),
+  },
 ];
 
 function plural(n: number, singular: string, varios: string): string {
@@ -73,28 +79,15 @@ export default async function PanelPage() {
       admin
         ? supabase
             .from("facturas")
-            .select("id, numero, fecha, cliente_id, total_cents")
+            .select("id, numero, fecha, cliente_nombre, total_cents")
             .order("fecha", { ascending: false })
             .order("numero", { ascending: false })
             .limit(MAX_ULTIMAS_FACTURAS)
-            .overrideTypes<FacturaFila[], { merge: false }>()
+            .overrideTypes<FacturaReciente[], { merge: false }>()
         : null,
     ]);
 
-  const ultimas = ultimasRes?.data ?? [];
-  const clientesRes =
-    ultimas.length > 0
-      ? await supabase
-          .from("clientes")
-          .select("id, nombre")
-          .in("id", [...new Set(ultimas.map((f) => f.cliente_id))])
-          .overrideTypes<{ id: string; nombre: string }[], { merge: false }>()
-      : null;
-  const nombresClientes = new Map((clientesRes?.data ?? []).map((c) => [c.id, c.nombre]));
-  const facturasRecientes: FacturaReciente[] = ultimas.map((f) => ({
-    ...f,
-    cliente: nombresClientes.get(f.cliente_id) ?? "—",
-  }));
+  const facturasRecientes = ultimasRes?.data ?? [];
 
   // Presupuestos por estado
   const conteosError = enviadoRes.error ?? aceptadoRes.error ?? facturadoRes.error ?? rechazadoRes.error;
@@ -130,7 +123,6 @@ export default async function PanelPage() {
     materialesRes.error,
     facturasMesRes?.error,
     ultimasRes?.error,
-    clientesRes?.error,
   ].filter((e): e is NonNullable<typeof e> => Boolean(e));
 
   return (

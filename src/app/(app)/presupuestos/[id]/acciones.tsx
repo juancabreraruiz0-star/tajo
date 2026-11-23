@@ -1,11 +1,18 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import Link from "next/link";
+import { useActionState, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button, buttonClasses, type ButtonVariant } from "@/components/ui/button";
 import { controlClasses, controlState } from "@/components/ui/field";
 import { SubmitButton } from "@/components/ui/submit-button";
-import { cambiarEstado, facturarPresupuesto, type AccionState } from "@/lib/actions/presupuestos";
+import {
+  cambiarEstado,
+  facturarPresupuesto,
+  regenerarEnlace,
+  type AccionState,
+  type RegenerarEnlaceState,
+} from "@/lib/actions/presupuestos";
 import { publicBudgetUrl } from "@/lib/domain/presupuestos";
 
 interface AccionFormProps {
@@ -31,7 +38,16 @@ function AccionForm({ action, label, pendingText, variant = "secondary", confirm
       <SubmitButton variant={variant} pendingText={pendingText}>
         {label}
       </SubmitButton>
-      {state.error && <Alert className="basis-full">{state.error}</Alert>}
+      {state.error && (
+        <Alert className="basis-full">
+          <p>{state.error}</p>
+          {state.enlace && (
+            <Link href={state.enlace.href} className="mt-2 inline-block font-semibold underline hover:no-underline">
+              {state.enlace.label}
+            </Link>
+          )}
+        </Alert>
+      )}
     </form>
   );
 }
@@ -65,16 +81,30 @@ export function Facturar({ id }: { id: string }) {
 
 const noSubscribe = () => () => {};
 
-/** Enlace público para el cliente: se ve en un campo de solo lectura y se copia con un botón. */
-export function EnlacePublico({ token, serverOrigin }: { token: string; serverOrigin: string | null }) {
-  // En el navegador manda su propio origen; en el servidor, el de la petición.
-  const origin = useSyncExternalStore(
+/** Origen de la app: en el navegador el suyo; en el servidor, el de la petición. */
+function useOrigin(serverOrigin: string | null): string {
+  return useSyncExternalStore(
     noSubscribe,
     () => window.location.origin,
     () => serverOrigin ?? "",
   );
-  const url = publicBudgetUrl(origin, token);
-  const inputRef = useRef<HTMLInputElement>(null);
+}
+
+interface EnlacePublicoProps {
+  token: string;
+  serverOrigin: string | null;
+  /** Etiqueta del campo (cambia si es un enlace recién generado). */
+  label?: string;
+}
+
+/**
+ * Enlace público para el cliente: se ve entero (en varias líneas si hace falta, también en móvil) y se copia con
+ * un botón.
+ */
+export function EnlacePublico({ token, serverOrigin, label = "Enlace para el cliente" }: EnlacePublicoProps) {
+  const id = useId();
+  const url = publicBudgetUrl(useOrigin(serverOrigin), token);
+  const campoRef = useRef<HTMLTextAreaElement>(null);
   const [copia, setCopia] = useState<"copiado" | "error" | null>(null);
 
   useEffect(() => {
@@ -89,46 +119,87 @@ export function EnlacePublico({ token, serverOrigin }: { token: string; serverOr
       setCopia("copiado");
     } catch {
       // Sin API del portapapeles (p. ej. http en la red local): se selecciona el texto y se prueba a la antigua.
-      inputRef.current?.select();
+      campoRef.current?.select();
       setCopia(document.execCommand("copy") ? "copiado" : "error");
     }
   }
 
   return (
     <div className="space-y-2">
-      <label htmlFor="enlace-publico" className="block text-sm font-medium text-stone-800">
-        Enlace para el cliente
+      <label htmlFor={id} className="block text-sm font-medium text-stone-800">
+        {label}
       </label>
-      <div className="flex flex-col gap-2 sm:flex-row">
-        <input
-          ref={inputRef}
-          id="enlace-publico"
-          type="text"
-          readOnly
-          value={url}
-          onFocus={(e) => e.currentTarget.select()}
-          aria-describedby="enlace-publico-estado"
-          className={`${controlClasses} ${controlState()} h-11 min-w-0 flex-1 font-mono text-sm`}
-        />
-        <Button variant="primary" onClick={copiar}>
-          Copiar enlace para el cliente
+      {/* Solo lectura y en varias líneas: el enlace se lee entero aunque la columna sea estrecha. */}
+      <textarea
+        ref={campoRef}
+        id={id}
+        readOnly
+        rows={3}
+        value={url}
+        onFocus={(e) => e.currentTarget.select()}
+        aria-describedby={`${id}-estado`}
+        className={`${controlClasses} ${controlState()} resize-none py-2 font-mono text-xs leading-5 break-all`}
+      />
+      <div className="flex flex-wrap gap-2">
+        <Button variant="primary" onClick={copiar} className="flex-1 sm:flex-none">
+          Copiar enlace
         </Button>
+        <a
+          href={`/p/${encodeURIComponent(token)}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={buttonClasses("secondary", "md", "flex-1 sm:flex-none")}
+        >
+          Abrir vista del cliente
+          <span className="sr-only"> (se abre en una pestaña nueva)</span>
+        </a>
       </div>
-      <p id="enlace-publico-estado" role="status" className="min-h-5 text-sm">
+      <p id={`${id}-estado`} role="status" className="min-h-5 text-sm">
         {copia === "copiado" && <span className="font-medium text-green-700">¡Enlace copiado!</span>}
         {copia === "error" && (
           <span className="text-red-700">No se ha podido copiar. Selecciona el enlace y cópialo a mano.</span>
         )}
       </p>
-      <a
-        href={`/p/${encodeURIComponent(token)}`}
-        target="_blank"
-        rel="noopener noreferrer"
-        className={buttonClasses("secondary", "md")}
+    </div>
+  );
+}
+
+interface RegenerarEnlaceProps {
+  id: string;
+  serverOrigin: string | null;
+  /** Si el enlace ya se muestra en la página (presupuesto enviado), aquí solo se confirma el cambio. */
+  enlaceVisible: boolean;
+}
+
+const CONFIRMAR_REGENERAR =
+  "¿Generar un enlace nuevo? El enlace anterior dejará de funcionar: quien lo tenga ya no podrá ver ni aceptar " +
+  "el presupuesto. Tendrás que mandarle el nuevo al cliente.";
+
+/** Gerencia: genera un enlace público nuevo; el anterior deja de funcionar. */
+export function RegenerarEnlace({ id, serverOrigin, enlaceVisible }: RegenerarEnlaceProps) {
+  const [state, formAction] = useActionState<RegenerarEnlaceState>(regenerarEnlace.bind(null, id), {});
+  return (
+    <div className="space-y-3">
+      <form
+        action={formAction}
+        onSubmit={(event) => {
+          if (!window.confirm(CONFIRMAR_REGENERAR)) event.preventDefault();
+        }}
       >
-        Abrir vista del cliente
-        <span className="sr-only"> (se abre en una pestaña nueva)</span>
-      </a>
+        <SubmitButton variant="secondary" pendingText="Generando…">
+          Generar enlace nuevo
+        </SubmitButton>
+      </form>
+      {state.error && <Alert>{state.error}</Alert>}
+      {state.token &&
+        (enlaceVisible ? (
+          <Alert tone="info">Enlace nuevo generado: es el que ves arriba. El anterior ya no funciona.</Alert>
+        ) : (
+          <>
+            <Alert tone="info">Enlace nuevo generado. El anterior ya no funciona.</Alert>
+            <EnlacePublico token={state.token} serverOrigin={serverOrigin} label="Enlace nuevo para el cliente" />
+          </>
+        ))}
     </div>
   );
 }

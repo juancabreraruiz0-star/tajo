@@ -24,8 +24,12 @@ export const LIMITES_PRESUPUESTO = {
   validezDias: 365,
 } as const;
 
-/** Tope del total: las columnas de importes de facturas son integer de Postgres. */
-const MAX_TOTAL_CENTS = 2_147_483_647;
+/**
+ * Tope del total (base + IVA): 10^13 céntimos, 100.000 millones de euros. Los importes son bigint en la base (0004);
+ * con este tope ninguna partida supera el CHECK de la base (presupuesto_lineas_importe_max_chk, como mucho 10^13
+ * céntimos por partida) y todas las cifras son enteros exactos en JavaScript (muy por debajo de 2^53 ≈ 9·10^15).
+ */
+export const MAX_TOTAL_CENTS = 10_000_000_000_000;
 
 // ----------------------------------------------------------------------------
 // Validación del formulario (servidor) — la BD exige cantidad > 0, precio ≥ 0 e IVA permitido.

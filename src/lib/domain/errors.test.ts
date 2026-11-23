@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { authErrorMessage, dbErrorMessage } from "./errors";
+import { authErrorMessage, dbErrorMessage, isClienteSinNif } from "./errors";
 
 describe("dbErrorMessage", () => {
   it.each([
     ["23505", "Ya existe un registro con esos datos."],
     ["23503", /dependen de este registro/],
     ["23502", "Falta un dato obligatorio."],
-    ["23514", "Algún dato no es válido. Revisa los campos."],
+    ["23514", /fuera de los límites permitidos/],
+    ["22003", "Algún número es demasiado grande. Revisa cantidades, precios e importes."],
+    ["22P02", "Algún dato no es válido. Revisa los campos."],
     ["42501", "No tienes permiso para hacer esto."],
     ["PGRST116", "No se ha encontrado el registro."],
     ["PGRST301", "Tu sesión ha caducado. Vuelve a entrar."],
@@ -43,6 +45,53 @@ describe("dbErrorMessage", () => {
     const message = "Solo se pueden cambiar las partidas de un presupuesto en borrador (estado actual: enviado).";
     expect(dbErrorMessage({ code: "P0001", message })).toBe(message);
     expect(dbErrorMessage({ code: "P0001", message: "" })).toBe("La base de datos ha rechazado la operación.");
+  });
+
+  it("CHECK (23514): dice qué límite se ha saltado según la restricción", () => {
+    const check = (restriccion: string) =>
+      dbErrorMessage({
+        code: "23514",
+        message: `new row for relation "x" violates check constraint "${restriccion}"`,
+      });
+    expect(check("clientes_nif_formato_chk")).toMatch(/NIF tiene que tener 9 letras o cifras/);
+    expect(check("clientes_notas_largo_chk")).toBe("Algún texto es demasiado largo. Revisa los campos.");
+    expect(check("presupuesto_lineas_importe_max_chk")).toBe("El importe de alguna partida es demasiado alto.");
+    expect(check("materiales_precio_max_chk")).toMatch(/precio tiene que estar entre/);
+    expect(check("presupuesto_lineas_cantidad_max_chk")).toMatch(/cantidad tiene que ser mayor que 0/);
+    expect(check("materiales_stock_rango_chk")).toMatch(/stock/);
+    expect(check("presupuestos_validez_rango_chk")).toBe("La validez tiene que estar entre 1 y 365 días.");
+    expect(check("presupuestos_iva_pct_check")).toBe("El IVA elegido no está permitido.");
+    // Una restricción sin mensaje propio: el genérico, nunca «error inesperado».
+    expect(check("clientes_nombre_check")).toMatch(/fuera de los límites permitidos/);
+    expect(dbErrorMessage({ code: "23514" })).toMatch(/fuera de los límites permitidos/);
+  });
+
+  it("cliente sin NIF al facturar (TJ001): usa el mensaje de la base, que ya está en español", () => {
+    const error = {
+      code: "TJ001",
+      message: "El cliente «Carmen Puig Soler» no tiene NIF. Añádelo en su ficha antes de facturar.",
+    };
+    expect(dbErrorMessage(error)).toBe(error.message);
+    expect(dbErrorMessage({ code: "TJ001", message: "" })).toMatch(/no tiene NIF/);
+    expect(isClienteSinNif(error)).toBe(true);
+    expect(isClienteSinNif({ code: "P0001", message: "x" })).toBe(false);
+  });
+
+  it("límite de partidas: el mensaje del trigger llega tal cual", () => {
+    const message = "Un presupuesto puede tener como mucho 100 partidas.";
+    expect(dbErrorMessage({ code: "P0001", message })).toBe(message);
+    expect(dbErrorMessage({ code: "P0001", message }, "guardar_presupuesto")).toBe(message);
+  });
+
+  it("aceptación interna rechazada por el trigger: mensaje legible", () => {
+    const message = "Solo gerencia puede dar por aceptado un presupuesto; el cliente lo acepta desde el enlace público.";
+    expect(dbErrorMessage({ code: "P0001", message })).toBe(message);
+  });
+
+  it("página fuera de rango (PGRST103)", () => {
+    expect(dbErrorMessage({ code: "PGRST103", message: "Requested range not satisfiable" })).toBe(
+      "Esa página no existe.",
+    );
   });
 
   it("detecta los fallos de red", () => {

@@ -2,6 +2,7 @@
 // Puros: sin Next ni Supabase.
 
 import { eurosToCents } from "./money";
+import { parseNif } from "./nif";
 import { parseQuantity, quantityToInput } from "./quantity";
 import { isNegativeStock } from "./stock";
 
@@ -73,10 +74,12 @@ export function validateLogin(raw: RawForm<LoginField>): ValidationResult<LoginF
 // Clientes (R4)
 // ----------------------------------------------------------------------------
 
-export type ClienteField = "nombre" | "telefono" | "email" | "direccion" | "notas";
+export type ClienteField = "nombre" | "nif" | "telefono" | "email" | "direccion" | "notas";
 
 export interface ClienteInput {
   nombre: string;
+  /** Normalizado (mayúsculas, sin espacios, puntos ni guiones); null si se deja vacío. */
+  nif: string | null;
   telefono: string | null;
   email: string | null;
   direccion: string | null;
@@ -87,6 +90,7 @@ export const LIMITES_CLIENTE = { nombre: 120, telefono: 40, direccion: 200, nota
 
 export function validateCliente(raw: RawForm<ClienteField>): ValidationResult<ClienteField, ClienteInput> {
   const nombre = text(raw.nombre);
+  const nif = parseNif(raw.nif);
   const telefono = optionalText(raw.telefono);
   const email = optionalText(raw.email);
   const direccion = optionalText(raw.direccion);
@@ -95,12 +99,13 @@ export function validateCliente(raw: RawForm<ClienteField>): ValidationResult<Cl
   return result<ClienteField, ClienteInput>(
     {
       nombre: nombre === "" ? "El nombre es obligatorio." : tooLong(nombre, LIMITES_CLIENTE.nombre),
+      nif: nif.error,
       telefono: tooLong(telefono, LIMITES_CLIENTE.telefono),
       email: email !== null && !isValidEmail(email) ? "El email no es válido (ej.: nombre@correo.es)." : undefined,
       direccion: tooLong(direccion, LIMITES_CLIENTE.direccion),
       notas: tooLong(notas, LIMITES_CLIENTE.notas),
     },
-    { nombre, telefono, email, direccion, notas },
+    { nombre, nif: nif.valor, telefono, email, direccion, notas },
   );
 }
 

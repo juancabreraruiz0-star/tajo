@@ -67,3 +67,29 @@ No estaban en REQUISITOS; se aprobaron porque hacen falta para usar la app y no 
 - Borrado de materiales (solo admin).
 - Tarjeta «Aceptados pendientes de facturar» en el panel del empleado.
 - Aviso de validez vencida en la página pública y en el detalle.
+
+## D9 · Correcciones de la auditoría externa (T11)
+
+Una auditoría independiente del código (2026-11-23) encontró fallos que el bucle develop → testing no vio. Se corrigen así:
+
+- **Alta solo por invitación** (sustituye a D3). Tabla `invitaciones (email, empresa_id, rol)` sin acceso desde la API. `handle_new_user` solo crea perfil si el email está invitado; si no, el usuario no tiene perfil y la app no le deja entrar. El registro público queda desactivado en Supabase y fijado en `supabase/config.toml` (`enable_signup = false`). La página de login no muestra los emails de demo.
+- **Aceptación interna solo para admin**. Un `enviado → aceptado` fuera de `aceptar_presupuesto()` exige `es_admin()` y la validez vigente, en el trigger. Se guarda `aceptado_por` (perfil, nulo si vino del enlace) y `aceptado_canal` (`enlace` | `interno`), y se muestran en el detalle.
+- **La factura es una copia fija**. `facturar_presupuesto()` guarda en `facturas` los datos del cliente (nombre, NIF, dirección), de la empresa (nombre, CIF, dirección) y el `iva_pct`, y las partidas en `factura_lineas` (solo lectura para admin; se escriben solo desde la función). La vista de factura pinta solo desde esa copia. Los clientes tienen `nif` (validado: NIF, NIE o CIF con letra o dígito de control) y no se puede facturar a un cliente sin NIF.
+- **Totales en SQL y listados paginados**. Vista `presupuestos_con_totales` (`security_invoker`) que reutiliza la regla de `totales_presupuesto`. Listados de presupuestos y facturas paginados de 25 en 25.
+- **Límites también en la base de datos**: `CHECK` de longitud y rango, `cantidad numeric(13,3)` (hasta 1.000.000.000, igual que la app) e importes en `bigint`.
+- **Alta de presupuestos**: el trigger fuerza `created_at = now()` y un `token` nuevo; no se pueden elegir desde la API.
+- **Enlace revocable**: `regenerar_enlace(p_presupuesto)` (solo admin) cambia el token; el enlace viejo deja de funcionar.
+- **Las marcas `tajo.seed` y `tajo.facturando` solo cuentan si `current_user` es `postgres`** (el SQL Editor o una función `security definer` del propietario).
+- **Cabeceras de seguridad** en `next.config.ts`: CSP con `frame-ancestors 'none'`, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy` y `Permissions-Policy`.
+- **Tests contra el Supabase real** (`npm run test:db`): entran como gerencia, obra y anónimo y comprueban qué puede y qué no puede hacer cada uno. No forman parte de `npm test` porque necesitan las contraseñas por variable de entorno.
+- Orden de ejecución: `0001` → `0002` → `0003` → `0004` → `seed.sql`. No se vuelven a ejecutar migraciones antiguas sobre una base ya migrada.
+
+## D10 · Tanda final (T12): presupuesto con IA y rediseño
+
+- **«Montar con IA»** en el formulario de presupuesto (alta y edición en borrador). El usuario describe la obra en un texto (máx. 1000 caracteres) y la IA propone partidas usando los materiales del almacén de su empresa y sus precios. Las partidas **se añaden al formulario para revisarlas**; nunca se guardan solas.
+  - Server Action con `@anthropic-ai/sdk` (única dependencia nueva), modelo `claude-opus-5-5`, salida estructurada con JSON Schema (`output_config.format`), `effort: "medium"` y fallback de rechazo en servidor (`fallbacks: "default"`).
+  - La clave va solo en el servidor (`ANTHROPIC_API_KEY`, nunca `NEXT_PUBLIC_*`). Sin clave, la función no aparece.
+  - La respuesta de la IA es **dato no fiable**: la valida una función pura de `src/lib/domain` con tests (material del almacén de la empresa o ninguno, precio del material si va vinculado, cantidades y precios dentro de los límites, máx. 30 partidas, textos recortados).
+  - Cuota en la base de datos: `consumir_uso_ia()` (migración 0005), 40 usos al día por empresa, para que una clave pública de demo no se pueda gastar sin control.
+- **Rediseño** sin cambiar la identidad de D6 (stone, ámbar y slate; Inter): página pública del presupuesto cuidada (es lo que ve el cliente final), panel con gráfica de facturación de 6 meses y embudo de presupuestos en SVG propio (sin librerías), login con identidad, estados vacíos, mejor móvil y transiciones con CSS que respetan `prefers-reduced-motion`.
+- Después, **segunda auditoría externa** con un agente nuevo sobre el conjunto.

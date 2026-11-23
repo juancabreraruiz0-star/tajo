@@ -36,29 +36,3 @@ export function budgetTotals(lineas: readonly LineaImporte[], ivaPct: number): T
   const ivaCents = Math.round((baseCents * ivaPct) / 100);
   return { baseCents, ivaCents, totalCents: baseCents + ivaCents };
 }
-
-export interface LineaDePresupuesto {
-  presupuesto_id: string;
-  cantidad: number;
-  precio_cents: number;
-}
-
-/**
- * Totales de varios presupuestos a la vez (listados e historiales) a partir de sus partidas.
- * Un presupuesto sin partidas sale con todo a 0.
- */
-export function totalsByPresupuesto(
-  presupuestos: readonly { id: string; iva_pct: number }[],
-  lineas: readonly LineaDePresupuesto[],
-): Map<string, TotalesPresupuesto> {
-  const porPresupuesto = new Map<string, LineaImporte[]>();
-  for (const linea of lineas) {
-    const lista = porPresupuesto.get(linea.presupuesto_id) ?? [];
-    // numeric de Postgres puede llegar como texto: se normaliza a número.
-    lista.push({ cantidad: Number(linea.cantidad), precioCents: linea.precio_cents });
-    porPresupuesto.set(linea.presupuesto_id, lista);
-  }
-  return new Map(
-    presupuestos.map((p) => [p.id, budgetTotals(porPresupuesto.get(p.id) ?? [], p.iva_pct)] as const),
-  );
-}

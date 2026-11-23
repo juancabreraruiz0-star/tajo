@@ -7,31 +7,47 @@ import { LinkButton } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
+import { PaginaFueraDeRango, Paginacion } from "@/components/ui/paginacion";
 import { Table, type Column } from "@/components/ui/table";
 import { getSessionProfile } from "@/lib/auth";
 import { formatFecha } from "@/lib/domain/dates";
 import { dbErrorMessage } from "@/lib/domain/errors";
 import { formatEuros } from "@/lib/domain/money";
+import { hrefPagina, paginacion, parsePagina } from "@/lib/domain/paginacion";
 import { parseEstadoFiltro, presupuestosHref } from "@/lib/domain/presupuestos";
 import { ESTADOS_PRESUPUESTO, type EstadoPresupuesto } from "@/lib/domain/status";
-import { totalsByPresupuesto, type LineaDePresupuesto } from "@/lib/domain/totals";
-import type { Presupuesto } from "@/lib/types";
+import { leerPagina } from "@/lib/paginar";
+import type { PresupuestoConTotales } from "@/lib/types";
 
 export const metadata: Metadata = { title: "Presupuestos" };
 
 type PresupuestoFila = Pick<
-  Presupuesto,
-  "id" | "numero" | "titulo" | "estado" | "iva_pct" | "created_at" | "cliente_id"
+  PresupuestoConTotales,
+  "id" | "numero" | "titulo" | "estado" | "created_at" | "cliente_nombre" | "total_cents"
 >;
-type PresupuestoListado = PresupuestoFila & { cliente: string; totalCents: number };
 
-const COLUMNAS: Column<PresupuestoListado>[] = [
-  { key: "numero", header: "Número", primary: true, cell: (p) => p.numero },
-  { key: "cliente", header: "Cliente", cell: (p) => p.cliente },
+/** Totales calculados en SQL por la vista presupuestos_con_totales (0004): no se traen las partidas. */
+const COLUMNAS_SELECT = "id, numero, titulo, estado, created_at, cliente_nombre, total_cents";
+
+const COLUMNAS: Column<PresupuestoFila>[] = [
+  { key: "numero", header: "Número", primary: true, className: "whitespace-nowrap", cell: (p) => p.numero },
+  { key: "cliente", header: "Cliente", cell: (p) => p.cliente_nombre },
   { key: "titulo", header: "Título", cell: (p) => p.titulo },
   { key: "estado", header: "Estado", cell: (p) => <EstadoBadge estado={p.estado} /> },
-  { key: "fecha", header: "Fecha", hideOnMobile: true, cell: (p) => formatFecha(p.created_at) },
-  { key: "total", header: "Total", align: "right", cell: (p) => formatEuros(p.totalCents) },
+  {
+    key: "fecha",
+    header: "Fecha",
+    hideOnMobile: true,
+    className: "whitespace-nowrap",
+    cell: (p) => formatFecha(p.created_at),
+  },
+  {
+    key: "total",
+    header: "Total",
+    align: "right",
+    className: "whitespace-nowrap",
+    cell: (p) => formatEuros(p.total_cents),
+  },
 ];
 
 const FILTROS: readonly (EstadoPresupuesto | null)[] = [null, ...ESTADOS_PRESUPUESTO];
@@ -44,52 +60,29 @@ function filtroClases(activo: boolean) {
 }
 
 interface PresupuestosPageProps {
-  searchParams: Promise<{ estado?: string | string[] }>;
+  searchParams: Promise<{ estado?: string | string[]; pagina?: string | string[] }>;
 }
 
 export default async function PresupuestosPage({ searchParams }: PresupuestosPageProps) {
-  const filtro = parseEstadoFiltro((await searchParams).estado);
+  const params = await searchParams;
+  const filtro = parseEstadoFiltro(params.estado);
+  const paginaPedida = parsePagina(params.pagina);
   const { supabase } = await getSessionProfile();
 
-  let query = supabase
-    .from("presupuestos")
-    .select("id, numero, titulo, estado, iva_pct, created_at, cliente_id")
-    .order("created_at", { ascending: false });
-  if (filtro) query = query.eq("estado", filtro);
-  const { data, error } = await query.overrideTypes<PresupuestoFila[], { merge: false }>();
-  const presupuestos = data ?? [];
+  const consulta = (head = false) => {
+    let query = supabase.from("presupuestos_con_totales").select(COLUMNAS_SELECT, { count: "exact", head });
+    if (filtro) query = query.eq("estado", filtro);
+    // id como desempate: el orden es estable entre páginas.
+    return query.order("created_at", { ascending: false }).order("id");
+  };
+  const { filas, total, error } = await leerPagina(
+    paginaPedida,
+    (desde, hasta) => consulta().range(desde, hasta).overrideTypes<PresupuestoFila[], { merge: false }>(),
+    () => consulta(true),
+  );
 
-  let errorDetalle: string | null = null;
-  let lineas: LineaDePresupuesto[] = [];
-  const nombres = new Map<string, string>();
-  if (presupuestos.length > 0) {
-    const [lineasRes, clientesRes] = await Promise.all([
-      supabase
-        .from("presupuesto_lineas")
-        .select("presupuesto_id, cantidad, precio_cents")
-        .in(
-          "presupuesto_id",
-          presupuestos.map((p) => p.id),
-        )
-        .overrideTypes<LineaDePresupuesto[], { merge: false }>(),
-      supabase
-        .from("clientes")
-        .select("id, nombre")
-        .in("id", [...new Set(presupuestos.map((p) => p.cliente_id))])
-        .overrideTypes<{ id: string; nombre: string }[], { merge: false }>(),
-    ]);
-    if (lineasRes.error) errorDetalle = dbErrorMessage(lineasRes.error);
-    if (clientesRes.error) errorDetalle = dbErrorMessage(clientesRes.error);
-    lineas = lineasRes.data ?? [];
-    for (const c of clientesRes.data ?? []) nombres.set(c.id, c.nombre);
-  }
-
-  const totales = totalsByPresupuesto(presupuestos, lineas);
-  const filas: PresupuestoListado[] = presupuestos.map((p) => ({
-    ...p,
-    cliente: nombres.get(p.cliente_id) ?? "—",
-    totalCents: totales.get(p.id)?.totalCents ?? 0,
-  }));
+  const estado = paginacion(paginaPedida, total);
+  const href = (pagina: number) => hrefPagina("/presupuestos", { estado: filtro }, pagina);
 
   const nuevo = (
     <LinkButton href="/presupuestos/nuevo" variant="primary">
@@ -99,8 +92,8 @@ export default async function PresupuestosPage({ searchParams }: PresupuestosPag
   );
 
   const resumen = filtro
-    ? `${filas.length} ${filas.length === 1 ? "presupuesto" : "presupuestos"} en «${ESTADO_LABEL[filtro]}»`
-    : `${filas.length} ${filas.length === 1 ? "presupuesto" : "presupuestos"}`;
+    ? `${total} ${total === 1 ? "presupuesto" : "presupuestos"} en «${ESTADO_LABEL[filtro]}»`
+    : `${total} ${total === 1 ? "presupuesto" : "presupuestos"}`;
 
   return (
     <>
@@ -108,16 +101,16 @@ export default async function PresupuestosPage({ searchParams }: PresupuestosPag
 
       <nav aria-label="Filtrar por estado" className="-mx-4 mb-5 overflow-x-auto px-4 sm:mx-0 sm:px-0">
         <ul className="flex gap-2 pb-1">
-          {FILTROS.map((estado) => {
-            const activo = estado === filtro;
+          {FILTROS.map((estadoFiltro) => {
+            const activo = estadoFiltro === filtro;
             return (
-              <li key={estado ?? "todos"}>
+              <li key={estadoFiltro ?? "todos"}>
                 <Link
-                  href={presupuestosHref(estado)}
+                  href={presupuestosHref(estadoFiltro)}
                   aria-current={activo ? "page" : undefined}
                   className={filtroClases(activo)}
                 >
-                  {estado ? ESTADO_LABEL[estado] : "Todos"}
+                  {estadoFiltro ? ESTADO_LABEL[estadoFiltro] : "Todos"}
                 </Link>
               </li>
             );
@@ -127,6 +120,8 @@ export default async function PresupuestosPage({ searchParams }: PresupuestosPag
 
       {error ? (
         <Alert title="No se han podido cargar los presupuestos">{dbErrorMessage(error)}</Alert>
+      ) : estado.fueraDeRango ? (
+        <PaginaFueraDeRango estado={estado} href={href} />
       ) : filas.length === 0 ? (
         filtro ? (
           <EmptyState
@@ -145,11 +140,6 @@ export default async function PresupuestosPage({ searchParams }: PresupuestosPag
         )
       ) : (
         <>
-          {errorDetalle && (
-            <Alert tone="warning" title="Faltan datos del listado" className="mb-4">
-              {errorDetalle} Los totales o los nombres de cliente pueden no estar completos.
-            </Alert>
-          )}
           <Table
             caption={filtro ? `Presupuestos en estado ${ESTADO_LABEL[filtro]}` : "Listado de presupuestos"}
             columns={COLUMNAS}
@@ -157,6 +147,7 @@ export default async function PresupuestosPage({ searchParams }: PresupuestosPag
             rowKey={(p) => p.id}
             rowHref={(p) => `/presupuestos/${p.id}`}
           />
+          <Paginacion estado={estado} total={total} href={href} label="Páginas de presupuestos" />
         </>
       )}
     </>

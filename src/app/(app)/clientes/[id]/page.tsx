@@ -8,33 +8,36 @@ import { LinkButton } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
+import { PaginaFueraDeRango, Paginacion } from "@/components/ui/paginacion";
 import { Table, type Column } from "@/components/ui/table";
 import { getSessionProfile, isAdmin } from "@/lib/auth";
 import { formatFecha } from "@/lib/domain/dates";
 import { dbErrorMessage } from "@/lib/domain/errors";
 import { formatEuros } from "@/lib/domain/money";
-import { totalsByPresupuesto, type LineaDePresupuesto } from "@/lib/domain/totals";
+import { hrefPagina, paginacion, parsePagina } from "@/lib/domain/paginacion";
 import { isUuid } from "@/lib/domain/validation";
-import type { Cliente, Factura, Presupuesto } from "@/lib/types";
+import { leerPagina } from "@/lib/paginar";
+import type { Cliente, Factura, PresupuestoConTotales } from "@/lib/types";
 
 export const metadata: Metadata = { title: "Cliente" };
 
-type PresupuestoFila = Pick<Presupuesto, "id" | "numero" | "titulo" | "estado" | "iva_pct" | "created_at">;
-type PresupuestoConTotal = PresupuestoFila & { totalCents: number };
+type PresupuestoFila = Pick<PresupuestoConTotales, "id" | "numero" | "titulo" | "estado" | "created_at" | "total_cents">;
 type FacturaFila = Pick<Factura, "id" | "numero" | "fecha" | "total_cents">;
 
-const COLUMNAS_PRESUPUESTOS: Column<PresupuestoConTotal>[] = [
-  { key: "numero", header: "Número", primary: true, cell: (p) => p.numero },
+const NOWRAP = "whitespace-nowrap";
+
+const COLUMNAS_PRESUPUESTOS: Column<PresupuestoFila>[] = [
+  { key: "numero", header: "Número", primary: true, className: NOWRAP, cell: (p) => p.numero },
   { key: "titulo", header: "Título", cell: (p) => p.titulo },
   { key: "estado", header: "Estado", cell: (p) => <EstadoBadge estado={p.estado} /> },
-  { key: "fecha", header: "Fecha", hideOnMobile: true, cell: (p) => formatFecha(p.created_at) },
-  { key: "total", header: "Total", align: "right", cell: (p) => formatEuros(p.totalCents) },
+  { key: "fecha", header: "Fecha", hideOnMobile: true, className: NOWRAP, cell: (p) => formatFecha(p.created_at) },
+  { key: "total", header: "Total", align: "right", className: NOWRAP, cell: (p) => formatEuros(p.total_cents) },
 ];
 
 const COLUMNAS_FACTURAS: Column<FacturaFila>[] = [
-  { key: "numero", header: "Número", primary: true, cell: (f) => f.numero },
-  { key: "fecha", header: "Fecha", cell: (f) => formatFecha(f.fecha) },
-  { key: "total", header: "Total", align: "right", cell: (f) => formatEuros(f.total_cents) },
+  { key: "numero", header: "Número", primary: true, className: NOWRAP, cell: (f) => f.numero },
+  { key: "fecha", header: "Fecha", className: NOWRAP, cell: (f) => formatFecha(f.fecha) },
+  { key: "total", header: "Total", align: "right", className: NOWRAP, cell: (f) => formatEuros(f.total_cents) },
 ];
 
 function Dato({ label, children }: { label: string; children: ReactNode }) {
@@ -48,34 +51,63 @@ function Dato({ label, children }: { label: string; children: ReactNode }) {
 
 const vacio = <span className="text-stone-400">Sin indicar</span>;
 
-export default async function ClientePage({ params }: { params: Promise<{ id: string }> }) {
+type Param = string | string[] | undefined;
+
+function primero(valor: Param): string | undefined {
+  return Array.isArray(valor) ? valor[0] : valor;
+}
+
+interface ClientePageProps {
+  params: Promise<{ id: string }>;
+  /** pagina: historial de presupuestos; pagina_facturas: historial de facturas (cada uno pagina por su cuenta). */
+  searchParams: Promise<{ pagina?: Param; pagina_facturas?: Param }>;
+}
+
+export default async function ClientePage({ params, searchParams }: ClientePageProps) {
   const { id } = await params;
   if (!isUuid(id)) notFound();
+  const query = await searchParams;
+  const paginaPresupuestos = parsePagina(query.pagina);
+  const paginaFacturas = parsePagina(query.pagina_facturas);
 
   const { perfil, supabase } = await getSessionProfile();
   const admin = isAdmin(perfil);
 
+  // Totales calculados en SQL por la vista presupuestos_con_totales (0004): no se traen las partidas.
+  const consultaPresupuestos = (head = false) =>
+    supabase
+      .from("presupuestos_con_totales")
+      .select("id, numero, titulo, estado, created_at, total_cents", { count: "exact", head })
+      .eq("cliente_id", id)
+      .order("created_at", { ascending: false })
+      .order("id");
+  const consultaFacturas = (head = false) =>
+    supabase
+      .from("facturas")
+      .select("id, numero, fecha, total_cents", { count: "exact", head })
+      .eq("cliente_id", id)
+      .order("fecha", { ascending: false })
+      .order("numero", { ascending: false });
+
   const [clienteRes, presupuestosRes, facturasRes] = await Promise.all([
     supabase
       .from("clientes")
-      .select("id, empresa_id, nombre, telefono, email, direccion, notas, created_at")
+      .select("id, empresa_id, nombre, nif, telefono, email, direccion, notas, created_at")
       .eq("id", id)
       .maybeSingle<Cliente>(),
-    supabase
-      .from("presupuestos")
-      .select("id, numero, titulo, estado, iva_pct, created_at")
-      .eq("cliente_id", id)
-      .order("created_at", { ascending: false })
-      .overrideTypes<PresupuestoFila[], { merge: false }>(),
+    leerPagina(
+      paginaPresupuestos,
+      (desde, hasta) =>
+        consultaPresupuestos().range(desde, hasta).overrideTypes<PresupuestoFila[], { merge: false }>(),
+      () => consultaPresupuestos(true),
+    ),
     // Las facturas solo se consultan para admin (R2).
     admin
-      ? supabase
-          .from("facturas")
-          .select("id, numero, fecha, total_cents")
-          .eq("cliente_id", id)
-          .order("fecha", { ascending: false })
-          .order("numero", { ascending: false })
-          .overrideTypes<FacturaFila[], { merge: false }>()
+      ? leerPagina(
+          paginaFacturas,
+          (desde, hasta) => consultaFacturas().range(desde, hasta).overrideTypes<FacturaFila[], { merge: false }>(),
+          () => consultaFacturas(true),
+        )
       : null,
   ]);
 
@@ -85,28 +117,14 @@ export default async function ClientePage({ params }: { params: Promise<{ id: st
   const cliente = clienteRes.data;
   if (!cliente) notFound();
 
-  const presupuestos = presupuestosRes.data ?? [];
-  let lineasError: string | null = null;
-  let lineas: LineaDePresupuesto[] = [];
-  if (presupuestos.length > 0) {
-    const { data, error } = await supabase
-      .from("presupuesto_lineas")
-      .select("presupuesto_id, cantidad, precio_cents")
-      .in(
-        "presupuesto_id",
-        presupuestos.map((p) => p.id),
-      )
-      .overrideTypes<LineaDePresupuesto[], { merge: false }>();
-    if (error) lineasError = dbErrorMessage(error);
-    lineas = data ?? [];
-  }
-  const totales = totalsByPresupuesto(presupuestos, lineas);
-  const filas: PresupuestoConTotal[] = presupuestos.map((p) => ({
-    ...p,
-    totalCents: totales.get(p.id)?.totalCents ?? 0,
-  }));
+  const presupuestos = presupuestosRes.filas;
+  const estadoPresupuestos = paginacion(paginaPresupuestos, presupuestosRes.total);
+  const hrefPresupuestos = (pagina: number) =>
+    `${hrefPagina(`/clientes/${id}`, { pagina_facturas: primero(query.pagina_facturas) }, pagina)}#presupuestos-titulo`;
 
-  const presupuestosError = presupuestosRes.error ? dbErrorMessage(presupuestosRes.error) : lineasError;
+  const estadoFacturas = facturasRes ? paginacion(paginaFacturas, facturasRes.total) : null;
+  const hrefFacturas = (pagina: number) =>
+    `${hrefPagina(`/clientes/${id}`, { pagina: primero(query.pagina) }, pagina, "pagina_facturas")}#facturas-titulo`;
 
   return (
     <>
@@ -129,6 +147,13 @@ export default async function ClientePage({ params }: { params: Promise<{ id: st
 
       <Card className="mb-8 p-4 sm:p-6">
         <dl className="grid gap-5 sm:grid-cols-2">
+          <Dato label="NIF">
+            {cliente.nif ? (
+              <span className="font-mono">{cliente.nif}</span>
+            ) : (
+              <span className="text-stone-400">Sin indicar (hace falta para facturar)</span>
+            )}
+          </Dato>
           <Dato label="Teléfono">
             {cliente.telefono ? (
               <a href={`tel:${cliente.telefono.replace(/[^\d+]/g, "")}`} className="text-amber-700 hover:underline">
@@ -155,49 +180,69 @@ export default async function ClientePage({ params }: { params: Promise<{ id: st
       </Card>
 
       <section aria-labelledby="presupuestos-titulo" className="mb-8">
-        <h2 id="presupuestos-titulo" className="mb-3 text-lg font-semibold text-stone-900">
+        <h2 id="presupuestos-titulo" className="mb-3 scroll-mt-20 text-lg font-semibold text-stone-900">
           Presupuestos
         </h2>
-        {presupuestosError ? (
-          <Alert title="No se han podido cargar los presupuestos">{presupuestosError}</Alert>
-        ) : filas.length === 0 ? (
+        {presupuestosRes.error ? (
+          <Alert title="No se han podido cargar los presupuestos">{dbErrorMessage(presupuestosRes.error)}</Alert>
+        ) : estadoPresupuestos.fueraDeRango ? (
+          <PaginaFueraDeRango estado={estadoPresupuestos} href={hrefPresupuestos} />
+        ) : presupuestos.length === 0 ? (
           <EmptyState
             icon={<DocumentIcon className="size-6" />}
             title="Sin presupuestos todavía"
             description="Cuando prepares un presupuesto para este cliente, aparecerá aquí con su estado y su total."
           />
         ) : (
-          <Table
-            caption={`Presupuestos de ${cliente.nombre}`}
-            columns={COLUMNAS_PRESUPUESTOS}
-            rows={filas}
-            rowKey={(p) => p.id}
-            rowHref={(p) => `/presupuestos/${p.id}`}
-          />
+          <>
+            <Table
+              caption={`Presupuestos de ${cliente.nombre}`}
+              columns={COLUMNAS_PRESUPUESTOS}
+              rows={presupuestos}
+              rowKey={(p) => p.id}
+              rowHref={(p) => `/presupuestos/${p.id}`}
+            />
+            <Paginacion
+              estado={estadoPresupuestos}
+              total={presupuestosRes.total}
+              href={hrefPresupuestos}
+              label={`Páginas de presupuestos de ${cliente.nombre}`}
+            />
+          </>
         )}
       </section>
 
-      {facturasRes && (
+      {facturasRes && estadoFacturas && (
         <section aria-labelledby="facturas-titulo">
-          <h2 id="facturas-titulo" className="mb-3 text-lg font-semibold text-stone-900">
+          <h2 id="facturas-titulo" className="mb-3 scroll-mt-20 text-lg font-semibold text-stone-900">
             Facturas
           </h2>
           {facturasRes.error ? (
             <Alert title="No se han podido cargar las facturas">{dbErrorMessage(facturasRes.error)}</Alert>
-          ) : (facturasRes.data ?? []).length === 0 ? (
+          ) : estadoFacturas.fueraDeRango ? (
+            <PaginaFueraDeRango estado={estadoFacturas} href={hrefFacturas} />
+          ) : facturasRes.filas.length === 0 ? (
             <EmptyState
               icon={<ReceiptIcon className="size-6" />}
               title="Sin facturas todavía"
               description="Las facturas se crean desde un presupuesto aceptado."
             />
           ) : (
-            <Table
-              caption={`Facturas de ${cliente.nombre}`}
-              columns={COLUMNAS_FACTURAS}
-              rows={facturasRes.data ?? []}
-              rowKey={(f) => f.id}
-              rowHref={(f) => `/facturas/${f.id}`}
-            />
+            <>
+              <Table
+                caption={`Facturas de ${cliente.nombre}`}
+                columns={COLUMNAS_FACTURAS}
+                rows={facturasRes.filas}
+                rowKey={(f) => f.id}
+                rowHref={(f) => `/facturas/${f.id}`}
+              />
+              <Paginacion
+                estado={estadoFacturas}
+                total={facturasRes.total}
+                href={hrefFacturas}
+                label={`Páginas de facturas de ${cliente.nombre}`}
+              />
+            </>
           )}
         </section>
       )}

@@ -67,7 +67,27 @@ describe("validateCliente", () => {
       validateCliente({ nombre: "  Marta Gil ", telefono: " 612 345 678 ", email: "", direccion: "  ", notas: null }),
     ).toEqual({
       ok: true,
-      data: { nombre: "Marta Gil", telefono: "612 345 678", email: null, direccion: null, notas: null },
+      data: { nombre: "Marta Gil", nif: null, telefono: "612 345 678", email: null, direccion: null, notas: null },
+    });
+  });
+
+  it("el NIF es opcional y se guarda normalizado", () => {
+    const r = validateCliente({ nombre: "Marta", nif: " 12.345.678-z " });
+    expect(r.ok && r.data.nif).toBe("12345678Z");
+    const cif = validateCliente({ nombre: "Reformas SL", nif: "b-12345674" });
+    expect(cif.ok && cif.data.nif).toBe("B12345674");
+    const vacio = validateCliente({ nombre: "Marta", nif: "  " });
+    expect(vacio.ok && vacio.data.nif).toBeNull();
+  });
+
+  it("da el error del NIF junto al campo", () => {
+    expect(validateCliente({ nombre: "Marta", nif: "12345678A" })).toEqual({
+      ok: false,
+      errors: { nif: "La letra no corresponde al número del DNI. Revísalo." },
+    });
+    expect(validateCliente({ nombre: "Marta", nif: "1234" })).toEqual({
+      ok: false,
+      errors: { nif: expect.stringMatching(/9 letras o cifras/) },
     });
   });
 

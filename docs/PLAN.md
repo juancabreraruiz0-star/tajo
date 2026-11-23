@@ -16,6 +16,11 @@ Gestionado por el orquestador. Cada tarea pasa por develop → testing hasta `AP
 | T8 | Facturas: facturar desde presupuesto, listado y vista imprimible/PDF | R12–R14 | ✅ aprobado (2026-11-23) |
 | T9 | Panel de inicio por rol | R17, R18 | ✅ aprobado (2026-11-23) |
 | T10 | Revisión final completa + README | R19–R21 | ✅ aprobado (2026-11-23); R21 pendiente del despliegue |
+| T11a | Auditoría externa · base de datos: migración 0004 (invitaciones, aceptación interna solo admin, copia fija de la factura y NIF, checks y bigint, alta forzada, regenerar enlace, marcas con `current_user`, vista de totales), seed y tests `test:db` | R2, R3, R9, R11–R14 · D9 | ✅ aprobado (2026-11-23, 3.ª vuelta: 1.ª rechazada porque la cantidad máxima de la base era menor que la de la app; 2.ª con mejoras de testing). Probado de verdad en PGlite: 124 comprobaciones |
+| T11b | Auditoría externa · aplicación: listados paginados con totales en SQL, factura desde la copia, NIF en clientes, aceptar interno solo admin, regenerar enlace, cabeceras, Next actualizado, detalles visuales y README | R2, R4, R9–R14, R19 · D9 | ✅ aprobado (2026-11-23, 1.ª vuelta). La base real pasa `npm run test:db`: 57/57 |
+| T12 | Presupuesto con IA (D10): acción, validación de la respuesta en dominio, cuota en 0005, botón en el formulario | R6 · D10 | ⏳ pendiente |
+| T13 | Rediseño (D10): página pública, panel con gráficas, login, estados vacíos, móvil | R11, R17–R19 · D10 | ⏳ pendiente |
+| T14 | Segunda auditoría externa y correcciones | todos | ⏳ pendiente |
 
 ## Sugerencias de testing resueltas en T10a/T10b
 

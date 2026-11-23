@@ -4,6 +4,7 @@ import {
   draftTotals,
   isExpired,
   LIMITES_PRESUPUESTO,
+  MAX_TOTAL_CENTS,
   originFromHeaders,
   parseEstadoFiltro,
   parsePresupuestoPublico,
@@ -128,12 +129,18 @@ describe("validatePresupuesto", () => {
     }
   });
 
-  it("rechaza un total por encima de 2.147.483.647 céntimos", () => {
+  it("rechaza un total (con IVA) por encima de 10^13 céntimos", () => {
+    expect(MAX_TOTAL_CENTS).toBe(10_000_000_000_000);
+    expect(Number.isSafeInteger(MAX_TOTAL_CENTS * LIMITES_PRESUPUESTO.partidas)).toBe(true);
     const r = validatePresupuesto(raw({ partidas: [partida({ cantidad: "1.000.000", precio: "1.000.000,00" })] }));
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.errors.campos.partidas).toBe("El importe total es demasiado alto.");
-    expect(validatePresupuesto(raw({ partidas: [partida({ cantidad: "17", precio: "1.000.000,00" })] })).ok).toBe(true);
-    expect(validatePresupuesto(raw({ partidas: [partida({ cantidad: "18", precio: "1.000.000,00" })] })).ok).toBe(false);
+    // 82.644 × 1.000.000 € = 8.264.400.000.000 cts de base; con el 21 % → 9.999.924.000.000 cts: cabe.
+    expect(validatePresupuesto(raw({ partidas: [partida({ cantidad: "82.644", precio: "1.000.000,00" })] })).ok).toBe(true);
+    // 82.645 → 10.000.045.000.000 cts con IVA: no cabe.
+    expect(validatePresupuesto(raw({ partidas: [partida({ cantidad: "82.645", precio: "1.000.000,00" })] })).ok).toBe(false);
+    // Importes que antes no cabían en integer (más de 21 millones de euros) ya se admiten.
+    expect(validatePresupuesto(raw({ partidas: [partida({ cantidad: "30", precio: "1.000.000,00" })] })).ok).toBe(true);
   });
 
   it("limita la longitud del título y de la descripción", () => {

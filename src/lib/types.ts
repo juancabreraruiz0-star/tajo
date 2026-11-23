@@ -1,5 +1,6 @@
 // Tipos de las tablas de Supabase según DECISIONES D1. Escritos a mano, sin generador.
-// Dinero siempre en céntimos (int). Fechas y timestamps llegan como texto ISO.
+// Dinero siempre en céntimos (bigint en la base desde 0004; en JS, number entero). Fechas y timestamps llegan como texto
+// ISO.
 
 import type { EstadoPresupuesto, Rol } from "@/lib/domain/status";
 
@@ -31,6 +32,8 @@ export interface Cliente {
   id: Uuid;
   empresa_id: Uuid;
   nombre: string;
+  /** NIF, NIE o CIF normalizado (mayúsculas, sin espacios, puntos ni guiones); null si no se ha indicado. */
+  nif: string | null;
   telefono: string | null;
   email: string | null;
   direccion: string | null;
@@ -63,6 +66,21 @@ export interface Presupuesto {
   created_at: Timestamp;
   enviado_at: Timestamp | null;
   aceptado_at: Timestamp | null;
+  /** Perfil de gerencia que lo dio por aceptado (canal interno); null si lo aceptó el cliente o se borró el perfil. */
+  aceptado_por: Uuid | null;
+  /** Por dónde se aceptó; null mientras no está aceptado ni facturado. */
+  aceptado_canal: CanalAceptacion | null;
+}
+
+export type CanalAceptacion = "enlace" | "interno";
+
+/** Fila de la vista presupuestos_con_totales (0004): el presupuesto con el nombre del cliente y sus totales en SQL. */
+export interface PresupuestoConTotales extends Presupuesto {
+  cliente_nombre: string;
+  base_cents: number;
+  iva_cents: number;
+  total_cents: number;
+  num_partidas: number;
 }
 
 export interface PresupuestoLinea {
@@ -87,4 +105,27 @@ export interface Factura {
   base_cents: number;
   iva_cents: number;
   total_cents: number;
+  // Copia fija de los datos del momento de facturar (0004): la factura se pinta solo con esto.
+  cliente_nombre: string;
+  cliente_nif: string | null;
+  cliente_direccion: string | null;
+  empresa_nombre: string;
+  empresa_cif: string | null;
+  empresa_direccion: string | null;
+  iva_pct: number;
+}
+
+/** Partida de una factura: copia de la del presupuesto al facturar (0004). */
+export interface FacturaLinea {
+  id: Uuid;
+  empresa_id: Uuid;
+  factura_id: Uuid;
+  orden: number;
+  descripcion: string;
+  /** Unidad del material vinculado en el momento de facturar, si lo había. */
+  unidad: string | null;
+  /** numeric: puede llegar como texto. */
+  cantidad: number;
+  precio_cents: number;
+  importe_cents: number;
 }

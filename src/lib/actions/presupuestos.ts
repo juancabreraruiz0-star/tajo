@@ -3,8 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getSessionProfile, isAdmin, type SupabaseServerClient } from "@/lib/auth";
-import { dbErrorMessage } from "@/lib/domain/errors";
+import { dbErrorMessage, isClienteSinNif } from "@/lib/domain/errors";
 import {
+  isExpired,
   validatePresupuesto,
   type PartidaField,
   type PartidaRaw,
@@ -12,7 +13,7 @@ import {
   type PresupuestoInput,
   type PresupuestoRaw,
 } from "@/lib/domain/presupuestos";
-import { canTransition, type EstadoPresupuesto } from "@/lib/domain/status";
+import { canMarkAccepted, canTransition, type EstadoPresupuesto } from "@/lib/domain/status";
 import { isUuid, type FieldErrors } from "@/lib/domain/validation";
 
 export interface PresupuestoFormState {
@@ -24,6 +25,14 @@ export interface PresupuestoFormState {
 
 export interface AccionState {
   error?: string;
+  /** Enlace para resolver el error (p. ej. editar el cliente al que le falta el NIF). */
+  enlace?: { href: string; label: string };
+}
+
+export interface RegenerarEnlaceState {
+  error?: string;
+  /** Token del enlace nuevo; el anterior ya no funciona. */
+  token?: string;
 }
 
 const REVISA = "Revisa los campos marcados.";
@@ -156,16 +165,27 @@ export async function cambiarEstado(id: string, destino: Destino): Promise<Accio
   if (!isUuid(id)) return { error: "El presupuesto no existe." };
   if (!DESTINOS.includes(destino)) return { error: "Ese cambio de estado no existe." };
 
-  const { supabase } = await getSessionProfile();
+  const { perfil, supabase } = await getSessionProfile();
   const { data: actual, error } = await supabase
     .from("presupuestos")
-    .select("estado, cliente_id")
+    .select("estado, cliente_id, created_at, validez_dias")
     .eq("id", id)
-    .maybeSingle<{ estado: EstadoPresupuesto; cliente_id: string }>();
+    .maybeSingle<{ estado: EstadoPresupuesto; cliente_id: string; created_at: string; validez_dias: number }>();
   if (error) return { error: dbErrorMessage(error) };
   if (!actual) return { error: "El presupuesto no existe o no tienes acceso a él." };
   if (!canTransition(actual.estado, destino)) {
     return { error: `No se puede pasar un presupuesto de «${actual.estado}» a «${destino}».` };
+  }
+  if (destino === "aceptado") {
+    // Aceptación interna (D9): solo gerencia y con la validez vigente. El trigger de 0004 lo impone también.
+    const vencido = isExpired(actual.created_at, actual.validez_dias);
+    if (!canMarkAccepted(perfil.rol, vencido)) {
+      return {
+        error: vencido
+          ? "La validez de este presupuesto ha vencido; no se puede dar por aceptado."
+          : "Solo gerencia puede dar por aceptado un presupuesto; el cliente lo acepta desde el enlace.",
+      };
+    }
   }
   if (destino === "enviado") {
     // La base de datos también lo impide (0003); aquí se da el mensaje antes de intentarlo.
@@ -200,7 +220,21 @@ export async function facturarPresupuesto(id: string): Promise<AccionState> {
   if (!isAdmin(perfil)) return { error: "Solo gerencia puede convertir presupuestos en factura." };
 
   const { data, error } = await supabase.rpc("facturar_presupuesto", { p_presupuesto: id });
-  if (error) return { error: dbErrorMessage(error) };
+  if (error) {
+    if (!isClienteSinNif(error)) return { error: dbErrorMessage(error) };
+    // Cliente sin NIF (TJ001): se ofrece ir a su ficha para añadirlo.
+    const { data: presupuesto } = await supabase
+      .from("presupuestos")
+      .select("cliente_id")
+      .eq("id", id)
+      .maybeSingle<{ cliente_id: string }>();
+    return {
+      error: dbErrorMessage(error),
+      enlace: presupuesto
+        ? { href: `/clientes/${presupuesto.cliente_id}/editar`, label: "Añadir el NIF del cliente" }
+        : undefined,
+    };
+  }
   const facturaId: unknown = data;
   if (typeof facturaId !== "string" || !isUuid(facturaId)) {
     return { error: "La factura se ha creado, pero no se ha podido abrir. Búscala en Facturas." };
@@ -212,4 +246,25 @@ export async function facturarPresupuesto(id: string): Promise<AccionState> {
   revalidatePath("/materiales");
   revalidatePath("/");
   redirect(`/facturas/${facturaId}`);
+}
+
+/**
+ * Genera un enlace público nuevo para el presupuesto (solo gerencia, fuera de borrador). El anterior deja de
+ * funcionar. regenerar_enlace() (0004) comprueba también el rol, la empresa y el estado.
+ */
+export async function regenerarEnlace(id: string): Promise<RegenerarEnlaceState> {
+  if (!isUuid(id)) return { error: "El presupuesto no existe." };
+
+  const { perfil, supabase } = await getSessionProfile();
+  if (!isAdmin(perfil)) return { error: "Solo gerencia puede generar un enlace nuevo." };
+
+  const { data, error } = await supabase.rpc("regenerar_enlace", { p_presupuesto: id });
+  if (error) return { error: dbErrorMessage(error) };
+  const token: unknown = data;
+  if (typeof token !== "string" || !isUuid(token)) {
+    return { error: "El enlace se ha cambiado, pero no se ha podido mostrar. Recarga la página." };
+  }
+
+  revalidatePath(`/presupuestos/${id}`);
+  return { token };
 }

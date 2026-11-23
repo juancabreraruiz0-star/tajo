@@ -10,7 +10,7 @@ import { ClienteForm } from "../../cliente-form";
 
 export const metadata: Metadata = { title: "Editar cliente" };
 
-type ClienteEditable = Pick<Cliente, "id" | "nombre" | "telefono" | "email" | "direccion" | "notas">;
+type ClienteEditable = Pick<Cliente, "id" | "nombre" | "nif" | "telefono" | "email" | "direccion" | "notas">;
 
 export default async function EditarClientePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -19,7 +19,7 @@ export default async function EditarClientePage({ params }: { params: Promise<{ 
   const { supabase } = await getSessionProfile();
   const { data: cliente, error } = await supabase
     .from("clientes")
-    .select("id, nombre, telefono, email, direccion, notas")
+    .select("id, nombre, nif, telefono, email, direccion, notas")
     .eq("id", id)
     .maybeSingle<ClienteEditable>();
 
@@ -36,6 +36,7 @@ export default async function EditarClientePage({ params }: { params: Promise<{ 
         cancelHref={`/clientes/${id}`}
         initial={{
           nombre: cliente.nombre,
+          nif: cliente.nif ?? "",
           telefono: cliente.telefono ?? "",
           email: cliente.email ?? "",
           direccion: cliente.direccion ?? "",
