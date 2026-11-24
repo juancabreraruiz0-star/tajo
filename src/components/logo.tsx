@@ -9,6 +9,10 @@ interface LogoProps {
 interface MarcaProps {
   /** Sobre fondo oscuro, lo que en el logo es azul marino se pinta en blanco. */
   tone?: "light" | "dark";
+  /** Todo de un color (currentColor): para ir dentro de un botón naranja, donde el tejado naranja no se vería. */
+  mono?: boolean;
+  /** «Obra en marcha»: el tejado naranja sube y baja (solo si el usuario no ha pedido reducir el movimiento). */
+  animada?: boolean;
   className?: string;
 }
 
@@ -16,14 +20,19 @@ interface MarcaProps {
  * La casa del logo de Tajo (docs/marca/logo-tajo.png): tejado a dos aguas, azul marino a la izquierda y naranja a la
  * derecha, con un pilar y un bloque debajo. Colores de la marca: #071B2C y #EC931C.
  */
-export function MarcaTajo({ tone = "light", className }: MarcaProps) {
-  const base = tone === "dark" ? "#ffffff" : "#071b2c";
+export function MarcaTajo({ tone = "light", mono = false, animada = false, className }: MarcaProps) {
+  const base = mono ? "currentColor" : tone === "dark" ? "#ffffff" : "#071b2c";
+  const tejado = mono ? "currentColor" : "#ec931c";
   return (
-    <svg viewBox="0 0 450 460" aria-hidden="true" className={className}>
+    <svg viewBox="0 0 450 460" aria-hidden="true" focusable="false" className={className}>
       <rect x="77" y="230" width="99" height="228" fill={base} />
       <rect x="270" y="231" width="180" height="174" fill={base} />
       <path d="M0 140 230 0v108L0 255Z" fill={base} />
-      <path d="M230 0 450 140v108L230 108Z" fill="#ec931c" />
+      <path
+        d="M230 0 450 140v108L230 108Z"
+        fill={tejado}
+        className={animada ? "motion-safe:animate-tejado" : undefined}
+      />
     </svg>
   );
 }

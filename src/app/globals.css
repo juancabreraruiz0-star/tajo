@@ -58,6 +58,44 @@
   --animate-entrada: entrada 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
   --animate-crecer-y: crecer-y 800ms cubic-bezier(0.22, 1, 0.36, 1) both;
   --animate-crecer-x: crecer-x 800ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  /* El tejado naranja del logo sube y baja mientras el asistente trabaja («obra en marcha»). */
+  --animate-tejado: tejado 1.2s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  /* La franja de obra avanza: barra de progreso indeterminada con la firma de Tajo. */
+  --animate-franja: franja-avanza 900ms linear infinite;
+  /* Reflejo que cruza el botón principal al pasar el ratón. */
+  --animate-brillo: brillo 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes brillo {
+  from {
+    transform: translateX(-120%) skewX(-20deg);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(420%) skewX(-20deg);
+    opacity: 1;
+  }
+}
+
+@keyframes tejado {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-14%);
+  }
+}
+
+@keyframes franja-avanza {
+  to {
+    background-position: 22.6px 0;
+  }
+}
+
+/* Que el tejado se mueva respecto a sí mismo (no respecto al lienzo del SVG). */
+.motion-safe\:animate-tejado {
+  transform-box: fill-box;
 }
 
 @keyframes entrada {

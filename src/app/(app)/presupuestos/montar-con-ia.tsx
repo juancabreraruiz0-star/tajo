@@ -164,11 +164,22 @@ export function MontarConIa({ hayPartidas, lleno, onPropuesta }: MontarConIaProp
   return (
     <section
       aria-labelledby={`${id}-titulo`}
-      className="rounded-xl border border-amber-200 bg-gradient-to-b from-amber-50 to-white p-4 shadow-sm sm:p-5"
+      className={cn(
+        "relative overflow-hidden rounded-xl border bg-gradient-to-b from-amber-50 to-white p-4 shadow-sm transition-[border-color,box-shadow] duration-300 sm:p-5",
+        pending ? "border-amber-400 shadow-[0_0_0_4px_rgb(236_147_28/0.12)]" : "border-amber-200",
+      )}
     >
-      <div className="flex items-start gap-3">
-        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-white shadow-tarjeta ring-1 ring-amber-200">
-          <MarcaTajo className="size-5" />
+      {/* Mientras trabaja, la franja de obra avanza por el borde de arriba. */}
+      {pending && <div aria-hidden="true" className="franja-obra absolute inset-x-0 top-0 h-1 motion-safe:animate-franja" />}
+      <div className="flex items-start gap-3.5">
+        <span className="relative flex size-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-slate-800 to-slate-900 shadow-[0_6px_16px_-6px_rgb(7_27_44/0.55),inset_0_1px_0_rgb(255_255_255/0.12)] ring-1 ring-white/10 ring-inset">
+          <MarcaTajo tone="dark" animada={pending} className="size-6" />
+          <span
+            aria-hidden="true"
+            className="absolute -right-1 -bottom-1 flex size-4 items-center justify-center rounded-full bg-amber-500 text-[0.5rem] font-bold text-stone-950 ring-2 ring-white"
+          >
+            IA
+          </span>
         </span>
         <div className="min-w-0">
           <h3 id={`${id}-titulo`} className="text-base font-semibold text-stone-900">
@@ -252,15 +263,12 @@ export function MontarConIa({ hayPartidas, lleno, onPropuesta }: MontarConIaProp
         >
           {pending ? (
             <>
-              <span
-                aria-hidden="true"
-                className="size-4 rounded-full border-2 border-stone-950/25 border-t-stone-950 motion-safe:animate-spin"
-              />
+              <MarcaTajo mono animada className="size-4" />
               Estudiando la obra…
             </>
           ) : (
             <>
-              <ChispasIcon className="size-4" />
+              <MarcaTajo mono className="size-4" />
               Proponer partidas
             </>
           )}
@@ -315,7 +323,7 @@ export function MontarConIa({ hayPartidas, lleno, onPropuesta }: MontarConIaProp
       )}
 
       {resultado && !pending && (
-        <div className="mt-4 space-y-3">
+        <div className="mt-4 space-y-3 motion-safe:escalonado">
           {/* Sin role: ya lo anuncia la región aria-live de arriba. */}
           <p className="rounded-lg border border-stone-200 bg-white px-4 py-3 text-sm text-stone-800">
             {resumen(resultado)}
@@ -336,25 +344,5 @@ export function MontarConIa({ hayPartidas, lleno, onPropuesta }: MontarConIaProp
         </div>
       )}
     </section>
-  );
-}
-
-/** Chispas: el icono de la IA. Decorativo. */
-function ChispasIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.8}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      focusable="false"
-      className={className}
-    >
-      <path d="M10 3.5l1.6 4.3a2 2 0 0 0 1.2 1.2L17 10.5l-4.2 1.5a2 2 0 0 0-1.2 1.2L10 17.5l-1.6-4.3a2 2 0 0 0-1.2-1.2L3 10.5l4.2-1.5a2 2 0 0 0 1.2-1.2L10 3.5z" />
-      <path d="M18 3v4M16 5h4M18 16v4M16 18h4" />
-    </svg>
   );
 }

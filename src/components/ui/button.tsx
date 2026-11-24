@@ -8,7 +8,9 @@ export type ButtonSize = "sm" | "md";
 const VARIANTS: Record<ButtonVariant, string> = {
   // Ámbar de obra con un brillo interior arriba y un filo más oscuro abajo: se lee como pieza, no como plantilla.
   primary:
-    "bg-amber-500 text-stone-950 shadow-[inset_0_1px_0_rgb(255_255_255/0.35),0_1px_2px_rgb(139_71_22/0.25)] ring-1 ring-amber-600/40 ring-inset hover:bg-amber-400 active:bg-amber-500",
+    "relative overflow-hidden bg-amber-500 text-stone-950 shadow-[inset_0_1px_0_rgb(255_255_255/0.35),0_1px_2px_rgb(139_71_22/0.25)] ring-1 ring-amber-600/40 ring-inset hover:bg-amber-400 active:bg-amber-500 " +
+    // Un reflejo cruza el botón al pasar el ratón (solo con movimiento permitido).
+    "before:pointer-events-none before:absolute before:inset-y-0 before:left-0 before:w-1/4 before:bg-white/35 before:opacity-0 before:content-[''] motion-safe:hover:before:animate-brillo",
   secondary:
     "bg-white text-stone-800 shadow-tarjeta ring-1 ring-stone-300 ring-inset hover:bg-stone-50 hover:ring-stone-400 active:bg-stone-100",
   danger:

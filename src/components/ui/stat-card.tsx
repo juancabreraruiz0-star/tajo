@@ -31,7 +31,12 @@ interface StatCardProps {
 /** Tarjeta de cifra del panel: título, valor grande, detalle y enlace opcional al listado. */
 export function StatCard({ id, title, value, icon, tone = "default", detail, children, link, className }: StatCardProps) {
   return (
-    <Card className={cn("flex flex-col transition-shadow duration-200 hover:shadow-elevada", className)}>
+    <Card
+      className={cn(
+        "flex flex-col transition-[box-shadow,transform] duration-200 ease-out hover:shadow-elevada motion-safe:hover:-translate-y-0.5",
+        className,
+      )}
+    >
       <section aria-labelledby={id} className="flex flex-1 flex-col p-5">
         <div className="flex items-center gap-3">
           {icon && (
