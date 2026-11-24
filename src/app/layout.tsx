@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
+import { Analitica } from "@/components/analitica";
 import "./globals.css";
 
 const inter = Inter({
@@ -27,7 +28,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es" className={inter.variable}>
-      <body className="bg-stone-50 font-sans text-stone-900 antialiased">{children}</body>
+      <body className="bg-stone-50 font-sans text-stone-900 antialiased">
+        {children}
+        <Analitica />
+      </body>
     </html>
   );
 }
