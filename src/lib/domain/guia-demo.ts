@@ -47,7 +47,7 @@ export function guiaDemo(hechos: HechosGuia, { ia, admin }: OpcionesGuia): GuiaD
   const crear: PasoGuia = ia
     ? {
         clave: "crear",
-        titulo: "Monta un presupuesto con IA",
+        titulo: "Monta un presupuesto con el Asistente Tajo",
         descripcion: "Describe la obra en una frase y revisa las partidas que propone.",
         href: "/presupuestos/nuevo",
         hecho: hechos.presupuestoCreado,

@@ -317,7 +317,7 @@ export function PresupuestoForm({ id, clientes, materiales, initial, cancelHref,
                       Partida {n}
                       {resaltada && (
                         <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
-                          Propuesta por la IA
+                          Propuesta por el asistente
                         </span>
                       )}
                     </h3>

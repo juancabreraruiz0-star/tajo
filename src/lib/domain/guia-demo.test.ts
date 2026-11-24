@@ -31,7 +31,7 @@ describe("guiaDemo", () => {
   });
 
   it("con IA propone montar el presupuesto con IA; sin IA, crearlo a mano", () => {
-    expect(guiaDemo(NADA, { ia: true, admin: true }).pasos[0].titulo).toBe("Monta un presupuesto con IA");
+    expect(guiaDemo(NADA, { ia: true, admin: true }).pasos[0].titulo).toBe("Monta un presupuesto con el Asistente Tajo");
     expect(guiaDemo(NADA, { ia: false, admin: true }).pasos[0].titulo).toBe("Crea un presupuesto");
   });
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useState, useTransition, type KeyboardEvent } from "react";
+import { MarcaTajo } from "@/components/logo";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
@@ -54,7 +55,7 @@ function plural(n: number, uno: string, varios: string): string {
 function resumen(r: Resultado): string {
   const partes = r.repetida ? ["Misma descripción que una propuesta anterior: mismas partidas."] : [];
   partes.push(
-    `${r.sustituidas ? "Se han puesto" : "Se han añadido"} ${plural(r.anadidas, "partida", "partidas")} propuestas por la IA${r.sustituidas ? " en lugar de las que había" : ""}. Revísalas antes de guardar.`,
+    `${r.sustituidas ? "Se han puesto" : "Se han añadido"} ${plural(r.anadidas, "partida", "partidas")} propuestas por el asistente${r.sustituidas ? " en lugar de las que había" : ""}. Revísalas antes de guardar.`,
   );
   if (r.sinHueco > 0) {
     partes.push(`${plural(r.sinHueco, "partida no ha cabido", "partidas no han cabido")}: un presupuesto tiene como mucho 100.`);
@@ -66,16 +67,16 @@ function resumen(r: Resultado): string {
 }
 
 function quedanTexto(quedan: number | null): string {
-  if (quedan === null) return "Esta no ha gastado ninguna de tus propuestas con IA de hoy.";
+  if (quedan === null) return "Esta no ha gastado ninguna de tus propuestas del asistente de hoy.";
   // Puede acabarse la cuota del usuario (15) o la de la empresa (40): el mensaje vale para las dos.
   return quedan === 0
-    ? "Has gastado las propuestas con IA de hoy. Mañana se renuevan."
-    : `Te ${quedan === 1 ? "queda" : "quedan"} ${plural(quedan, "propuesta", "propuestas")} con IA hoy.`;
+    ? "Has gastado las propuestas del asistente de hoy. Mañana se renuevan."
+    : `Te ${quedan === 1 ? "queda" : "quedan"} ${plural(quedan, "propuesta", "propuestas")} del asistente hoy.`;
 }
 
 /** Lo que oye un lector de pantalla al terminar: resumen, supuestos y usos que quedan, en un solo anuncio. */
 function anuncio(r: Resultado): string {
-  const supuestos = r.supuestos.length > 0 ? ` La IA ha supuesto: ${r.supuestos.join("; ")}.` : "";
+  const supuestos = r.supuestos.length > 0 ? ` El asistente ha supuesto: ${r.supuestos.join("; ")}.` : "";
   return `${resumen(r)}${supuestos} ${quedanTexto(r.quedan)}`;
 }
 
@@ -166,15 +167,15 @@ export function MontarConIa({ hayPartidas, lleno, onPropuesta }: MontarConIaProp
       className="rounded-xl border border-amber-200 bg-gradient-to-b from-amber-50 to-white p-4 shadow-sm sm:p-5"
     >
       <div className="flex items-start gap-3">
-        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-amber-500 text-stone-950">
-          <ChispasIcon className="size-5" />
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-white shadow-tarjeta ring-1 ring-amber-200">
+          <MarcaTajo className="size-5" />
         </span>
         <div className="min-w-0">
           <h3 id={`${id}-titulo`} className="text-base font-semibold text-stone-900">
-            Montar con IA
+            Asistente Tajo
           </h3>
           <p className="text-sm text-stone-600">
-            Describe la obra y la IA propone las partidas con los materiales y precios de tu almacén. Sustituyen a las
+            Describe la obra y el asistente, con IA, te propone las partidas con los materiales y precios de tu almacén. Sustituyen a las
             de abajo (o van detrás, si lo marcas) para que las revises; no se guarda nada hasta que pulses «Guardar».
             Con el mismo almacén, la misma descripción da siempre las mismas partidas.
           </p>
@@ -321,7 +322,7 @@ export function MontarConIa({ hayPartidas, lleno, onPropuesta }: MontarConIaProp
           </p>
           {resultado.supuestos.length > 0 && (
             <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-              <p className="font-semibold">La IA ha supuesto:</p>
+              <p className="font-semibold">El asistente ha supuesto:</p>
               <ul className="mt-1 list-disc space-y-0.5 pl-5">
                 {resultado.supuestos.map((s) => (
                   <li key={s}>{s}</li>
