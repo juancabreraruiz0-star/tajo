@@ -304,6 +304,11 @@ describe("parseRespuestaAceptar", () => {
       aceptadoAt: "2026-11-23T10:00:00Z",
     });
   });
+  it("si el motivo es del nombre (0007), lo dice para pintarlo junto al campo", () => {
+    const motivo = "Escribe tu nombre y apellidos para aceptar el presupuesto (entre 2 y 120 caracteres).";
+    expect(parseRespuestaAceptar({ ok: false, campo: "nombre", motivo })).toEqual({ ok: false, motivo, campo: "nombre" });
+    expect(parseRespuestaAceptar({ ok: false, campo: "otro", motivo })).toEqual({ ok: false, motivo });
+  });
   it("devuelve el motivo si no se ha podido aceptar", () => {
     expect(parseRespuestaAceptar({ ok: false, motivo: "Este presupuesto ya estaba aceptado." })).toEqual({
       ok: false,

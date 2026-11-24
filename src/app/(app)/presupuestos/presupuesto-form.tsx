@@ -20,6 +20,7 @@ import {
   type PartidaRaw,
   type PresupuestoRaw,
 } from "@/lib/domain/presupuestos";
+import { MontarConIa } from "./montar-con-ia";
 
 export interface ClienteOpcion {
   id: string;
@@ -42,6 +43,8 @@ interface PresupuestoFormProps {
   materiales: readonly MaterialOpcion[];
   initial: PresupuestoInicial;
   cancelHref: string;
+  /** ¿Se ofrece «Montar con IA»? Solo si el servidor tiene la clave configurada (D10). */
+  ia: boolean;
 }
 
 type Fila = PartidaRaw & { key: number };
@@ -56,7 +59,15 @@ const ANADIR_ID = "anadir-partida";
 
 const PARTIDA_VACIA: PartidaRaw = { descripcion: "", cantidad: "1", precio: "", material_id: "" };
 
-export function PresupuestoForm({ id, clientes, materiales, initial, cancelHref }: PresupuestoFormProps) {
+/** Partida sin nada escrito (la cantidad trae 1 por defecto, así que no cuenta). */
+function esFilaVacia(p: PartidaRaw): boolean {
+  return p.descripcion.trim() === "" && p.precio.trim() === "" && p.material_id === "";
+}
+
+/** Tiempo que se resaltan las partidas que acaba de proponer la IA. */
+const RESALTADO_MS = 4000;
+
+export function PresupuestoForm({ id, clientes, materiales, initial, cancelHref, ia }: PresupuestoFormProps) {
   const [state, formAction, pending] = useActionState<PresupuestoFormState, FormData>(
     savePresupuesto.bind(null, id),
     {},
@@ -72,10 +83,24 @@ export function PresupuestoForm({ id, clientes, materiales, initial, cancelHref 
   const [foco, setFoco] = useState<{ id: string } | null>(null);
   // Orden de las filas al enviar: los errores del servidor vienen por posición.
   const [keysEnviadas, setKeysEnviadas] = useState<number[]>([]);
+  // Partidas recién propuestas por la IA: se resaltan un momento.
+  const [resaltadas, setResaltadas] = useState<ReadonlySet<number>>(new Set());
+  // La IA tarda hasta un minuto y mientras tanto se puede seguir editando: al llegar, se parte de las filas de ese momento.
+  const filasActuales = useRef(filas);
+
+  useEffect(() => {
+    filasActuales.current = filas;
+  }, [filas]);
 
   useEffect(() => {
     if (foco) document.getElementById(foco.id)?.focus();
   }, [foco]);
+
+  useEffect(() => {
+    if (resaltadas.size === 0) return;
+    const temporizador = window.setTimeout(() => setResaltadas(new Set()), RESALTADO_MS);
+    return () => window.clearTimeout(temporizador);
+  }, [resaltadas]);
 
   const materialPorId = new Map(materiales.map((m) => [m.id, m]));
   const totales = draftTotals(filas, cabecera.iva_pct);
@@ -122,6 +147,21 @@ export function PresupuestoForm({ id, clientes, materiales, initial, cancelHref 
     const anterior = indice > 0 ? filas[indice - 1] : undefined;
     setFilas((actuales) => actuales.filter((f) => f.key !== key));
     setFoco({ id: anterior ? `partida-${anterior.key}-descripcion` : ANADIR_ID });
+  }
+
+  /**
+   * Partidas de «Montar con IA»: se añaden detrás de las que hay (quitando las filas vacías) o las sustituyen.
+   * Solo hasta el máximo de partidas del presupuesto. Devuelve cuántas se han metido.
+   */
+  function anadirPropuesta(partidas: PartidaRaw[], sustituir: boolean): number {
+    const base = sustituir ? [] : filasActuales.current.filter((f) => !esFilaVacia(f));
+    const nuevas = partidas
+      .slice(0, Math.max(0, LIMITES_PRESUPUESTO.partidas - base.length))
+      .map((p) => ({ ...p, key: siguienteKey.current++ }));
+    if (nuevas.length === 0) return 0;
+    setFilas([...base, ...nuevas]);
+    setResaltadas(new Set(nuevas.map((f) => f.key)));
+    return nuevas.length;
   }
 
   function errorFila(key: number, campo: PartidaField): string | undefined {
@@ -232,6 +272,14 @@ export function PresupuestoForm({ id, clientes, materiales, initial, cancelHref 
           </p>
         </div>
 
+        {ia && (
+          <MontarConIa
+            hayPartidas={filas.some((f) => !esFilaVacia(f))}
+            lleno={filas.filter((f) => !esFilaVacia(f)).length >= LIMITES_PRESUPUESTO.partidas}
+            onPropuesta={anadirPropuesta}
+          />
+        )}
+
         {campoError?.partidas && <Alert>{campoError.partidas}</Alert>}
 
         <ol className="space-y-3">
@@ -251,11 +299,25 @@ export function PresupuestoForm({ id, clientes, materiales, initial, cancelHref 
               cantidad: errorFila(fila.key, "cantidad"),
               precio: errorFila(fila.key, "precio"),
             };
+            const resaltada = resaltadas.has(fila.key);
             return (
-              <li key={fila.key}>
+              <li
+                key={fila.key}
+                className={cn(
+                  "rounded-xl transition-shadow duration-700 motion-reduce:transition-none",
+                  resaltada && "ring-2 ring-amber-400",
+                )}
+              >
                 <Card className="p-4">
                   <div className="mb-3 flex items-center justify-between gap-2">
-                    <h3 className="text-sm font-semibold text-stone-700">Partida {n}</h3>
+                    <h3 className="flex items-center gap-2 text-sm font-semibold text-stone-700">
+                      Partida {n}
+                      {resaltada && (
+                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                          Propuesta por la IA
+                        </span>
+                      )}
+                    </h3>
                     <Button
                       variant="ghost"
                       size="sm"

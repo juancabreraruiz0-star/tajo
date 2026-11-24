@@ -1,0 +1,36 @@
+# Tajo · integración continua: lint, tipos, tests de dominio, tests de base de datos en PGlite (sin Supabase ni
+# contraseñas) y build de producción, en cada push y pull request a main.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # El build no se conecta a Supabase (todas las rutas son dinámicas: comprobado con `next build` sin variables).
+      # Valores falsos de ejemplo por si alguna página llegara a leerlas al compilar. Nunca claves reales aquí.
+      NEXT_PUBLIC_SUPABASE_URL: https://ejemplo-falso.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: clave-anonima-falsa-de-ci
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      # lint → typecheck → test (dominio) → test:pglite (base de datos) → build
+      - run: npm run check

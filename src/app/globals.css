@@ -5,12 +5,115 @@
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
 }
 
+@theme {
+  /* Sombras suaves y cálidas (stone-900) en lugar de negro puro. */
+  --shadow-tarjeta: 0 1px 2px 0 rgb(28 25 23 / 0.05), 0 1px 3px 0 rgb(28 25 23 / 0.04);
+  --shadow-elevada: 0 2px 4px -1px rgb(28 25 23 / 0.06), 0 12px 28px -8px rgb(28 25 23 / 0.16);
+  --ease-suave: cubic-bezier(0.22, 1, 0.36, 1);
+
+  --animate-entrada: entrada 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-crecer-y: crecer-y 800ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-crecer-x: crecer-x 800ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes entrada {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes crecer-y {
+  from {
+    transform: scaleY(0);
+  }
+}
+
+@keyframes crecer-x {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+/* Línea discontinua que avanza (la estancia «en obra» del plano del login). */
+@keyframes trazo {
+  to {
+    stroke-dashoffset: -200;
+  }
+}
+
+/* Franja de obra (ámbar y casi negro en diagonal): la firma de Tajo. Poca y en sitios contados. */
+@utility franja-obra {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    var(--color-amber-500) 0 8px,
+    var(--color-stone-900) 8px 16px
+  );
+}
+
+/* Cuadrícula de plano (papel milimetrado) para fondos. El color de las líneas se cambia con --plano-linea. */
+@utility fondo-plano {
+  background-image:
+    linear-gradient(var(--plano-linea, rgb(120 113 108 / 0.08)) 1px, transparent 1px),
+    linear-gradient(90deg, var(--plano-linea, rgb(120 113 108 / 0.08)) 1px, transparent 1px);
+  background-size: 24px 24px;
+  background-position: -1px -1px;
+}
+
+/* Aparición escalonada: cada hijo directo entra un poco después del anterior. */
+@utility escalonado {
+  & > * {
+    animation: entrada 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  & > :nth-child(2) {
+    animation-delay: 50ms;
+  }
+  & > :nth-child(3) {
+    animation-delay: 100ms;
+  }
+  & > :nth-child(4) {
+    animation-delay: 150ms;
+  }
+  & > :nth-child(n + 5) {
+    animation-delay: 200ms;
+  }
+}
+
 html {
   -webkit-tap-highlight-color: transparent;
+  scroll-padding-top: 5rem;
 }
 
 body {
   min-height: 100dvh;
+}
+
+/* Foco visible en todo lo que se maneja con teclado. Los campos de formulario llevan además su propio anillo. */
+:where(a, button, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-amber-600);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--color-amber-200);
+  color: var(--color-stone-900);
+}
+
+/* Movimiento reducido: sin animaciones ni transiciones; el contenido aparece directamente. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* Impresión / PDF (D5): A4 con márgenes limpios; el chrome de la app lleva print:hidden. */
@@ -25,5 +128,13 @@ body {
     min-height: 0;
     print-color-adjust: exact;
     -webkit-print-color-adjust: exact;
+  }
+
+  /* En papel nada entra con animación. */
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
   }
 }

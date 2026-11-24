@@ -77,6 +77,39 @@ describe("dbErrorMessage", () => {
     expect(isClienteSinNif({ code: "P0001", message: "x" })).toBe(false);
   });
 
+  it("cuota de IA del día gastada (TJ002): usa el mensaje de la base, que ya está en español", () => {
+    const message = "Has llegado al límite de 40 propuestas con IA de hoy. Vuelve a intentarlo mañana.";
+    expect(dbErrorMessage({ code: "TJ002", message })).toBe(message);
+    expect(dbErrorMessage({ code: "TJ002", message: "" })).toMatch(/límite de propuestas con IA de hoy/);
+  });
+
+  it("cuota de IA del usuario gastada (TJ003): usa el mensaje de la base y, si falta, uno propio", () => {
+    const message = "Has llegado a tu límite de 15 propuestas con IA de hoy. Vuelve a intentarlo mañana.";
+    expect(dbErrorMessage({ code: "TJ003", message })).toBe(message);
+    expect(dbErrorMessage({ code: "TJ003", message: "" })).toBe(message);
+    expect(dbErrorMessage({ code: "TJ003", message: null })).toBe(message);
+  });
+
+  it("NIF con la letra o el dígito de control mal (clientes_nif_valido_chk, 0007)", () => {
+    expect(
+      dbErrorMessage({
+        code: "23514",
+        message: 'new row for relation "clientes" violates check constraint "clientes_nif_valido_chk"',
+      }),
+    ).toBe("El NIF no es válido: revisa la letra o el dígito de control.");
+  });
+
+  it("reglas nuevas de los partes y los presupuestos (0007): el mensaje llega tal cual", () => {
+    for (const message of [
+      "Ese día ya tienes 20 h apuntadas: como mucho 24 h por persona y día.",
+      "La fecha del parte no puede ser de hace más de 30 días.",
+      "La fecha de inicio no se cambia una vez empezada la obra.",
+      "Un presupuesto aceptado o facturado no se borra.",
+    ]) {
+      expect(dbErrorMessage({ code: "P0001", message })).toBe(message);
+    }
+  });
+
   it("límite de partidas: el mensaje del trigger llega tal cual", () => {
     const message = "Un presupuesto puede tener como mucho 100 partidas.";
     expect(dbErrorMessage({ code: "P0001", message })).toBe(message);

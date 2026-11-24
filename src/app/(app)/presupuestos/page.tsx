@@ -30,7 +30,7 @@ type PresupuestoFila = Pick<
 const COLUMNAS_SELECT = "id, numero, titulo, estado, created_at, cliente_nombre, total_cents";
 
 const COLUMNAS: Column<PresupuestoFila>[] = [
-  { key: "numero", header: "Número", primary: true, className: "whitespace-nowrap", cell: (p) => p.numero },
+  { key: "numero", header: "Número", primary: true, className: "whitespace-nowrap tabular-nums", cell: (p) => p.numero },
   { key: "cliente", header: "Cliente", cell: (p) => p.cliente_nombre },
   { key: "titulo", header: "Título", cell: (p) => p.titulo },
   { key: "estado", header: "Estado", cell: (p) => <EstadoBadge estado={p.estado} /> },
@@ -38,7 +38,7 @@ const COLUMNAS: Column<PresupuestoFila>[] = [
     key: "fecha",
     header: "Fecha",
     hideOnMobile: true,
-    className: "whitespace-nowrap",
+    className: "whitespace-nowrap tabular-nums",
     cell: (p) => formatFecha(p.created_at),
   },
   {
@@ -46,7 +46,7 @@ const COLUMNAS: Column<PresupuestoFila>[] = [
     header: "Total",
     align: "right",
     className: "whitespace-nowrap",
-    cell: (p) => formatEuros(p.total_cents),
+    cell: (p) => <span className="font-medium text-stone-900">{formatEuros(p.total_cents)}</span>,
   },
 ];
 
@@ -54,10 +54,21 @@ const FILTROS: readonly (EstadoPresupuesto | null)[] = [null, ...ESTADOS_PRESUPU
 
 function filtroClases(activo: boolean) {
   return cn(
-    "inline-flex h-9 shrink-0 items-center rounded-full px-3.5 text-sm font-medium ring-1 ring-inset transition-colors",
-    activo ? "bg-stone-900 text-white ring-stone-900" : "bg-white text-stone-700 ring-stone-300 hover:bg-stone-100",
+    "inline-flex h-9 shrink-0 items-center gap-2 rounded-full px-3.5 text-sm font-medium whitespace-nowrap ring-1 ring-inset transition-colors duration-150",
+    activo
+      ? "bg-slate-900 text-white ring-slate-900"
+      : "bg-white text-stone-700 ring-stone-300 hover:bg-stone-50 hover:ring-stone-400",
   );
 }
+
+// Punto de color de cada estado en los filtros (mismos colores que las insignias, D6).
+const PUNTO_ESTADO: Record<EstadoPresupuesto, string> = {
+  borrador: "bg-stone-400",
+  enviado: "bg-blue-500",
+  aceptado: "bg-green-500",
+  rechazado: "bg-red-500",
+  facturado: "bg-violet-500",
+};
 
 interface PresupuestosPageProps {
   searchParams: Promise<{ estado?: string | string[]; pagina?: string | string[] }>;
@@ -110,6 +121,9 @@ export default async function PresupuestosPage({ searchParams }: PresupuestosPag
                   aria-current={activo ? "page" : undefined}
                   className={filtroClases(activo)}
                 >
+                  {estadoFiltro && (
+                    <span aria-hidden="true" className={cn("size-2 rounded-full", PUNTO_ESTADO[estadoFiltro])} />
+                  )}
                   {estadoFiltro ? ESTADO_LABEL[estadoFiltro] : "Todos"}
                 </Link>
               </li>
@@ -134,8 +148,13 @@ export default async function PresupuestosPage({ searchParams }: PresupuestosPag
           <EmptyState
             icon={<DocumentIcon className="size-6" />}
             title="Todavía no hay presupuestos"
-            description="Crea el primero: elige el cliente, añade las partidas y envíale el enlace para que lo acepte."
-            action={nuevo}
+            description="Elige el cliente, añade las partidas y envíale el enlace para que lo acepte desde el móvil."
+            action={
+              <LinkButton href="/presupuestos/nuevo" variant="primary">
+                <PlusIcon className="size-4" />
+                Crear el primer presupuesto
+              </LinkButton>
+            }
           />
         )
       ) : (

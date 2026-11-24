@@ -396,16 +396,20 @@ export function parsePresupuestoPublico(valor: unknown): PresupuestoPublico | nu
   };
 }
 
-export type RespuestaAceptar = { ok: true; aceptadoAt: string } | { ok: false; motivo: string };
+export type RespuestaAceptar =
+  | { ok: true; aceptadoAt: string }
+  /** campo = "nombre": el motivo es del nombre y se pinta junto a su campo (0007). */
+  | { ok: false; motivo: string; campo?: "nombre" };
 
-/** Lee la respuesta de aceptar_presupuesto(): { ok: true, aceptado_at } o { ok: false, motivo }. */
+/** Lee la respuesta de aceptar_presupuesto(): { ok: true, aceptado_at } o { ok: false, motivo[, campo] }. */
 export function parseRespuestaAceptar(valor: unknown): RespuestaAceptar {
   if (isObj(valor) && valor.ok === true) {
     const aceptadoAt = str(valor.aceptado_at);
     if (aceptadoAt) return { ok: true, aceptadoAt };
   }
   if (isObj(valor) && valor.ok === false) {
-    return { ok: false, motivo: str(valor.motivo) || "No se ha podido aceptar el presupuesto." };
+    const motivo = str(valor.motivo) || "No se ha podido aceptar el presupuesto.";
+    return valor.campo === "nombre" ? { ok: false, motivo, campo: "nombre" } : { ok: false, motivo };
   }
   return { ok: false, motivo: "No se ha podido aceptar el presupuesto. Inténtalo de nuevo." };
 }

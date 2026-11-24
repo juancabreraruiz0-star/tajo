@@ -22,17 +22,23 @@ type FacturaFila = Pick<Factura, "id" | "numero" | "fecha" | "cliente_nombre" | 
 const NOWRAP = "whitespace-nowrap";
 
 const COLUMNAS: Column<FacturaFila>[] = [
-  { key: "numero", header: "Número", primary: true, className: NOWRAP, cell: (f) => f.numero },
-  { key: "fecha", header: "Fecha", className: NOWRAP, cell: (f) => formatFecha(f.fecha) },
+  { key: "numero", header: "Número", primary: true, className: `${NOWRAP} tabular-nums`, cell: (f) => f.numero },
+  { key: "fecha", header: "Fecha", className: `${NOWRAP} tabular-nums`, cell: (f) => formatFecha(f.fecha) },
   { key: "cliente", header: "Cliente", cell: (f) => f.cliente_nombre },
   {
     key: "nif",
     header: "NIF",
     hideOnMobile: true,
-    className: `${NOWRAP} font-mono text-xs`,
+    className: `${NOWRAP} font-mono text-[0.8125rem]`,
     cell: (f) => f.cliente_nif ?? "—",
   },
-  { key: "total", header: "Total", align: "right", className: NOWRAP, cell: (f) => formatEuros(f.total_cents) },
+  {
+    key: "total",
+    header: "Total",
+    align: "right",
+    className: NOWRAP,
+    cell: (f) => <span className="font-medium text-stone-900">{formatEuros(f.total_cents)}</span>,
+  },
 ];
 
 interface FacturasPageProps {

@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { EstadoBadge } from "@/components/estado-badge";
-import { DocumentIcon, PencilIcon, ReceiptIcon } from "@/components/icons";
+import { ChevronRightIcon, DocumentIcon, PencilIcon, PlusIcon, ReceiptIcon } from "@/components/icons";
+import { ObraEstadoBadge, SemaforoObra } from "@/components/obra";
 import { Alert } from "@/components/ui/alert";
 import { LinkButton } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -14,15 +16,26 @@ import { getSessionProfile, isAdmin } from "@/lib/auth";
 import { formatFecha } from "@/lib/domain/dates";
 import { dbErrorMessage } from "@/lib/domain/errors";
 import { formatEuros } from "@/lib/domain/money";
+import { semaforoObra } from "@/lib/domain/obras";
+import { formatConsumido, parseSemaforo } from "@/lib/domain/obras-pantalla";
 import { hrefPagina, paginacion, parsePagina } from "@/lib/domain/paginacion";
 import { isUuid } from "@/lib/domain/validation";
 import { leerPagina } from "@/lib/paginar";
-import type { Cliente, Factura, PresupuestoConTotales } from "@/lib/types";
+import type { Cliente, Factura, ObraResumen, PresupuestoConTotales } from "@/lib/types";
 
 export const metadata: Metadata = { title: "Cliente" };
 
 type PresupuestoFila = Pick<PresupuestoConTotales, "id" | "numero" | "titulo" | "estado" | "created_at" | "total_cents">;
 type FacturaFila = Pick<Factura, "id" | "numero" | "fecha" | "total_cents">;
+/** semaforo (0007) lo ven todos; el % consumido, solo gerencia (D12). */
+type ObraFila = Pick<ObraResumen, "id" | "titulo" | "estado" | "presupuesto_numero" | "semaforo"> &
+  Partial<Pick<ObraResumen, "consumido_pct">>;
+
+const COLUMNAS_OBRAS = "id, titulo, estado, presupuesto_numero, semaforo";
+const COLUMNAS_OBRAS_GERENCIA = `${COLUMNAS_OBRAS}, consumido_pct`;
+
+/** Obras que se listan en la ficha (lista corta; el resto, en Obras). */
+const MAX_OBRAS = 5;
 
 const NOWRAP = "whitespace-nowrap";
 
@@ -42,14 +55,14 @@ const COLUMNAS_FACTURAS: Column<FacturaFila>[] = [
 
 function Dato({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div>
-      <dt className="text-xs font-medium tracking-wide text-stone-500 uppercase">{label}</dt>
+    <div className="min-w-0">
+      <dt className="text-[0.6875rem] font-semibold tracking-wider text-stone-500 uppercase">{label}</dt>
       <dd className="mt-1 text-sm break-words text-stone-900">{children}</dd>
     </div>
   );
 }
 
-const vacio = <span className="text-stone-400">Sin indicar</span>;
+const vacio = <span className="text-stone-500">Sin indicar</span>;
 
 type Param = string | string[] | undefined;
 
@@ -89,7 +102,7 @@ export default async function ClientePage({ params, searchParams }: ClientePageP
       .order("fecha", { ascending: false })
       .order("numero", { ascending: false });
 
-  const [clienteRes, presupuestosRes, facturasRes] = await Promise.all([
+  const [clienteRes, presupuestosRes, facturasRes, obrasRes] = await Promise.all([
     supabase
       .from("clientes")
       .select("id, empresa_id, nombre, nif, telefono, email, direccion, notas, created_at")
@@ -109,6 +122,15 @@ export default async function ClientePage({ params, searchParams }: ClientePageP
           () => consultaFacturas(true),
         )
       : null,
+    // Sus obras: sin importes (los ve gerencia en la obra). Estado y semáforo; gerencia, también el % consumido.
+    supabase
+      .from("obras_resumen")
+      .select(admin ? COLUMNAS_OBRAS_GERENCIA : COLUMNAS_OBRAS, { count: "exact" })
+      .eq("cliente_id", id)
+      .order("created_at", { ascending: false })
+      .order("id")
+      .limit(MAX_OBRAS)
+      .overrideTypes<ObraFila[], { merge: false }>(),
   ]);
 
   if (clienteRes.error) {
@@ -139,6 +161,7 @@ export default async function ClientePage({ params, searchParams }: ClientePageP
               Editar
             </LinkButton>
             <LinkButton href={`/presupuestos/nuevo?cliente=${id}`} variant="primary">
+              <PlusIcon className="size-4" />
               Nuevo presupuesto
             </LinkButton>
           </>
@@ -151,12 +174,15 @@ export default async function ClientePage({ params, searchParams }: ClientePageP
             {cliente.nif ? (
               <span className="font-mono">{cliente.nif}</span>
             ) : (
-              <span className="text-stone-400">Sin indicar (hace falta para facturar)</span>
+              <span className="text-amber-800">Sin indicar (hace falta para facturar)</span>
             )}
           </Dato>
           <Dato label="Teléfono">
             {cliente.telefono ? (
-              <a href={`tel:${cliente.telefono.replace(/[^\d+]/g, "")}`} className="text-amber-700 hover:underline">
+              <a
+                href={`tel:${cliente.telefono.replace(/[^\d+]/g, "")}`}
+                className="font-medium text-amber-800 underline-offset-2 hover:underline"
+              >
                 {cliente.telefono}
               </a>
             ) : (
@@ -165,7 +191,7 @@ export default async function ClientePage({ params, searchParams }: ClientePageP
           </Dato>
           <Dato label="Email">
             {cliente.email ? (
-              <a href={`mailto:${cliente.email}`} className="text-amber-700 hover:underline">
+              <a href={`mailto:${cliente.email}`} className="font-medium text-amber-800 underline-offset-2 hover:underline">
                 {cliente.email}
               </a>
             ) : (
@@ -179,8 +205,59 @@ export default async function ClientePage({ params, searchParams }: ClientePageP
         </dl>
       </Card>
 
+      {obrasRes.error ? (
+        <Alert tone="warning" title="No se han podido cargar sus obras" className="mb-8">
+          {dbErrorMessage(obrasRes.error)}
+        </Alert>
+      ) : (obrasRes.data ?? []).length > 0 ? (
+        <section aria-labelledby="obras-titulo" className="mb-8">
+          <h2 id="obras-titulo" className="mb-3 text-lg font-semibold tracking-tight text-stone-900">
+            Obras
+          </h2>
+          <ul className="divide-y divide-stone-100 overflow-hidden rounded-xl border border-stone-200/90 bg-white shadow-tarjeta">
+            {(obrasRes.data ?? []).map((obra) => {
+              const consumido = obra.consumido_pct == null ? null : Number(obra.consumido_pct);
+              // El semáforo lo calcula la vista; gerencia, si no llegara, lo saca del % (misma regla).
+              const semaforo = parseSemaforo(obra.semaforo) ?? (admin ? semaforoObra(consumido, obra.estado) : null);
+              return (
+                <li key={obra.id}>
+                  <Link
+                    href={`/obras/${obra.id}`}
+                    className="group flex items-center gap-3 px-4 py-3 transition-colors hover:bg-amber-50/50 sm:px-5"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium break-words text-stone-900 group-hover:text-amber-800">{obra.titulo}</p>
+                      <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-stone-500">
+                        <span className="tabular-nums">{obra.presupuesto_numero}</span>
+                        {obra.estado !== "pendiente" && (
+                          <>
+                            {admin && <span className="tabular-nums">{formatConsumido(consumido)} consumido</span>}
+                            {semaforo && <SemaforoObra semaforo={semaforo} />}
+                          </>
+                        )}
+                      </p>
+                    </div>
+                    <ObraEstadoBadge estado={obra.estado} />
+                    <ChevronRightIcon className="size-5 shrink-0 text-stone-400" />
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+          {(obrasRes.count ?? 0) > MAX_OBRAS && (
+            <p className="mt-2 text-sm text-stone-500">
+              Y {(obrasRes.count ?? 0) - MAX_OBRAS} más en{" "}
+              <Link href="/obras?estado=todas" className="font-medium text-amber-800 hover:underline">
+                Obras
+              </Link>
+              .
+            </p>
+          )}
+        </section>
+      ) : null}
+
       <section aria-labelledby="presupuestos-titulo" className="mb-8">
-        <h2 id="presupuestos-titulo" className="mb-3 scroll-mt-20 text-lg font-semibold text-stone-900">
+        <h2 id="presupuestos-titulo" className="mb-3 scroll-mt-20 text-lg font-semibold tracking-tight text-stone-900">
           Presupuestos
         </h2>
         {presupuestosRes.error ? (
@@ -192,6 +269,12 @@ export default async function ClientePage({ params, searchParams }: ClientePageP
             icon={<DocumentIcon className="size-6" />}
             title="Sin presupuestos todavía"
             description="Cuando prepares un presupuesto para este cliente, aparecerá aquí con su estado y su total."
+            action={
+              <LinkButton href={`/presupuestos/nuevo?cliente=${id}`} variant="primary">
+                <PlusIcon className="size-4" />
+                Crear su primer presupuesto
+              </LinkButton>
+            }
           />
         ) : (
           <>
@@ -214,7 +297,7 @@ export default async function ClientePage({ params, searchParams }: ClientePageP
 
       {facturasRes && estadoFacturas && (
         <section aria-labelledby="facturas-titulo">
-          <h2 id="facturas-titulo" className="mb-3 scroll-mt-20 text-lg font-semibold text-stone-900">
+          <h2 id="facturas-titulo" className="mb-3 scroll-mt-20 text-lg font-semibold tracking-tight text-stone-900">
             Facturas
           </h2>
           {facturasRes.error ? (

@@ -1,16 +1,18 @@
 import type { ReactNode } from "react";
 import { cn } from "./cn";
 
+// text-base en móvil (16 px): iOS no hace zoom al enfocar el campo.
 export const controlClasses = cn(
-  "block w-full rounded-lg border bg-white px-3 text-base text-stone-900 shadow-sm sm:text-sm",
-  "placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-500/40",
-  "disabled:cursor-not-allowed disabled:bg-stone-100",
+  "block w-full rounded-lg border bg-white px-3 text-base text-stone-900 shadow-tarjeta sm:text-sm",
+  "transition-[border-color,box-shadow] duration-150 ease-out",
+  "placeholder:text-stone-400 focus:outline-none focus:ring-4",
+  "disabled:cursor-not-allowed disabled:bg-stone-100 disabled:text-stone-500",
 );
 
 export function controlState(error?: string) {
   return error
-    ? "border-red-400 focus:border-red-500 focus:ring-red-500/30"
-    : "border-stone-300 focus:border-amber-500";
+    ? "border-red-400 focus:border-red-500 focus:ring-red-500/15"
+    : "border-stone-300 hover:border-stone-400 focus:border-amber-500 focus:ring-amber-500/20";
 }
 
 interface FieldProps {
@@ -37,12 +39,12 @@ export function Field({ id, label, error, hint, required, className, children }:
       </label>
       {children}
       {hint && !error && (
-        <p id={`${id}-hint`} className="text-xs text-stone-500">
+        <p id={`${id}-hint`} className="text-xs text-pretty text-stone-500">
           {hint}
         </p>
       )}
       {error && (
-        <p id={`${id}-error`} className="text-sm text-red-600">
+        <p id={`${id}-error`} className="text-sm font-medium text-red-700">
           {error}
         </p>
       )}

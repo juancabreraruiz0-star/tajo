@@ -60,3 +60,21 @@ export function centsToEurosInput(cents: number): string {
 export function formatEuros(cents: number): string {
   return EUR.format(cents / 100);
 }
+
+const ENTERO = new Intl.NumberFormat("es-ES", { maximumFractionDigits: 0 });
+const UN_DECIMAL = new Intl.NumberFormat("es-ES", { maximumFractionDigits: 1 });
+
+/**
+ * Euros en corto para gráficas, donde no cabe el importe exacto: 85000 → "850 €", 1240000 → "12,4 mil €",
+ * 123456789 → "1,2 M€". Espacio duro antes de la unidad para que no se parta la línea.
+ */
+export function formatEurosCorto(cents: number): string {
+  if (!Number.isSafeInteger(cents)) throw new Error("Los importes deben ser céntimos enteros.");
+  const euros = cents / 100;
+  const signo = euros < 0 ? "-" : "";
+  const abs = Math.abs(euros);
+  // Se redondea antes de elegir la unidad: 999,6 € es «1 mil €», no «1000 €».
+  if (Math.round(abs) < 1_000) return `${signo}${ENTERO.format(abs)} €`;
+  if (Math.round(abs / 100) / 10 < 1_000) return `${signo}${UN_DECIMAL.format(abs / 1_000)} mil €`;
+  return `${signo}${UN_DECIMAL.format(abs / 1_000_000)} M€`;
+}

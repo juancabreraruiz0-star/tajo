@@ -1,0 +1,230 @@
+// Migraciones y seed: 0007 se aplica sobre una base con datos (como la real: 0001 → 0006 y actividad de la app) sin
+// perder nada, aborta con la lista si hay datos que no cumplirían sus reglas, y 0006, 0007 y el seed se pueden volver
+// a ejecutar.
+
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {
+  type Base,
+  E1,
+  GER,
+  OBRA,
+  SEED,
+  baseVacia,
+  crearUsuariosDemo,
+  en,
+  migracion,
+  migraciones,
+  seed,
+  ser,
+  unaEn,
+  valor,
+} from "./andamio";
+
+const HASTA_0006 = migraciones().filter((m) => m < "0007");
+
+let base: Base;
+/** Presupuestos creados como lo haría la app antes de 0007. */
+const app = { cliente: "", aceptadoEnlace: "", facturado: "", interno: "", borrador: "" };
+
+/** Lo que no debe cambiar al aplicar 0007: filas de cada tabla y los importes. */
+async function foto(b: Base) {
+  const n = async (t: string) => Number((await b.one(`select count(*)::int as n from ${t}`))?.n);
+  const tablas = [
+    "empresas", "perfiles", "invitaciones", "clientes", "materiales", "presupuestos", "presupuesto_lineas", "facturas",
+    "factura_lineas", "contadores", "obras", "partes", "parte_materiales", "uso_ia", "uso_ia_reservas",
+  ];
+  const cuentas: Record<string, number> = {};
+  for (const t of tablas) cuentas[t] = await n(t);
+  return {
+    cuentas,
+    totales: await b.q(
+      "select id, estado, aceptado_canal, aceptado_por, base_cents::text, total_cents::text from presupuestos_con_totales order by id",
+    ),
+    facturas: await b.q("select numero, total_cents::text, cliente_nif from facturas order by numero"),
+    obras: await b.q(
+      "select id, estado, horas::text, coste_real_cents::text, margen_cents::text, consumido_pct::text from obras_resumen order by id",
+    ),
+    perfiles: await b.q("select id, empresa_id, rol from perfiles order by id"),
+  };
+}
+
+beforeAll(async () => {
+  base = await baseVacia();
+  for (const m of HASTA_0006) await base.exec(migracion(m));
+  // Usuarios de la base real: invitados (0004) antes de darse de alta.
+  await base.exec(`
+    insert into invitaciones (email, empresa_id, rol) values
+      ('gerencia@reformaslevante.es', '${E1}', 'admin'), ('obra@reformaslevante.es', '${E1}', 'empleado');`);
+  await crearUsuariosDemo(base);
+
+  // Actividad de la app con 0001 → 0006: cliente, presupuestos, envío, aceptación por enlace (firma vieja) y por
+  // gerencia, factura, obra en curso con un parte y un uso de IA.
+  const r = await base.como(
+    "postgres",
+    async (tx) => {
+      await ser(tx, OBRA);
+      app.cliente = String(
+        (await unaEn(tx, "insert into clientes (empresa_id, nombre, nif) values ($1, 'Cliente real', '48291736Q') returning id", [E1])).id,
+      );
+      const crear = async (titulo: string) =>
+        String(
+          (
+            await unaEn(
+              tx,
+              `select guardar_presupuesto(null, $1, $2, 21, 30,
+                 '[{"orden":1,"descripcion":"Partida","cantidad":2.5,"precio_cents":1999,"material_id":null},
+                   {"orden":2,"descripcion":"Otra","cantidad":1.333,"precio_cents":3333,"material_id":null}]'::jsonb) as id`,
+              [app.cliente, titulo],
+            )
+          ).id,
+        );
+      app.aceptadoEnlace = await crear("Aceptado por el cliente");
+      app.facturado = await crear("Facturado");
+      app.interno = await crear("Aceptado por gerencia");
+      app.borrador = await crear("Borrador");
+      await en(tx, "update presupuestos set estado = 'enviado' where id = any($1)", [
+        [app.aceptadoEnlace, app.facturado, app.interno],
+      ]);
+      await en(tx, "select * from consumir_uso_ia()");
+      await ser(tx, "postgres");
+      const tokens = await en(tx, "select token from presupuestos where id = any($1)", [[app.aceptadoEnlace, app.facturado]]);
+      await ser(tx, "anon");
+      for (const t of tokens) await en(tx, "select aceptar_presupuesto($1::uuid)", [t.token]);
+      await ser(tx, GER);
+      await en(tx, "update presupuestos set estado = 'aceptado' where id = $1", [app.interno]);
+      await en(tx, "select facturar_presupuesto($1)", [app.facturado]);
+      await en(tx, "update obras set estado = 'en_curso', encargado_id = $2 where presupuesto_id = $1", [app.aceptadoEnlace, OBRA]);
+      await ser(tx, OBRA);
+      await en(tx, "select guardar_parte(null, (select id from obras where presupuesto_id = $1), null, 6, 'Parte real', '[]')", [
+        app.aceptadoEnlace,
+      ]);
+    },
+    { guardar: true },
+  );
+  valor(r);
+});
+afterAll(() => base?.cerrar());
+
+describe("0007 sobre una base 0001 → 0006 con datos", () => {
+  it("con datos que no cumplirían sus reglas, no aplica nada y dice cuáles", async () => {
+    await base.exec(`
+      select set_config('tajo.seed', 'on', false);
+      update clientes set nif = '12345678A' where id = '${app.cliente}';
+      update presupuesto_lineas set orden = 1 where presupuesto_id = '${app.borrador}';
+      select set_config('tajo.seed', 'off', false);`);
+    let msg = "";
+    try {
+      await base.exec(migracion("0007_auditoria2.sql"));
+    } catch (e) {
+      msg = (e as Error).message;
+    }
+    expect(msg).toMatch(/No se ha aplicado nada/);
+    expect(msg).toMatch(/12345678A \(Cliente real\)/);
+    expect(msg).toMatch(/dos partidas con el mismo orden: P-\d{4}-\d{4}/);
+    // Nada a medias: ni la función, ni las columnas, ni la tabla nuevas.
+    const quedo = await base.one(`
+      select to_regprocedure('public.nif_valido(text)') as f, to_regclass('public.uso_ia_perfiles') as t,
+             exists (select 1 from information_schema.columns where table_name = 'presupuestos' and column_name = 'aceptado_nombre') as c`);
+    expect(quedo).toEqual({ f: null, t: null, c: false });
+    await base.exec(`
+      select set_config('tajo.seed', 'on', false);
+      update clientes set nif = '48291736Q' where id = '${app.cliente}';
+      update presupuesto_lineas l set orden = x.n
+        from (select id, row_number() over (order by descripcion) as n from presupuesto_lineas where presupuesto_id = '${app.borrador}') x
+       where l.id = x.id;
+      select set_config('tajo.seed', 'off', false);`);
+  });
+
+  it("se aplica sin perder ni cambiar nada, y marca usadas las invitaciones con perfil", async () => {
+    const antes = await foto(base);
+    await base.exec(migracion("0007_auditoria2.sql"));
+    const despues = await foto(base);
+    expect(despues).toEqual(antes);
+    const inv = await base.q("select email, usada_at is not null as usada from invitaciones order by email");
+    expect(inv.every((i) => i.usada)).toBe(true);
+    // Lo aceptado antes de 0007 se queda sin nombre, IP ni navegador (no se sabe) y sin quién lo envió.
+    const viejo = await base.one(
+      "select aceptado_canal, aceptado_nombre, aceptado_ip, aceptado_user_agent, enviado_por from presupuestos where id = $1",
+      [app.aceptadoEnlace],
+    );
+    expect(viejo).toEqual({ aceptado_canal: "enlace", aceptado_nombre: null, aceptado_ip: null, aceptado_user_agent: null, enviado_por: null });
+  });
+
+  it("la app sigue funcionando con la firma nueva: un presupuesto viejo enviado se acepta con nombre", async () => {
+    const r = await base.como("postgres", async (tx) => {
+      await ser(tx, OBRA);
+      await en(tx, "select guardar_presupuesto($1, $2, 'Borrador', 21, 30, $3::jsonb)", [
+        app.borrador,
+        app.cliente,
+        JSON.stringify([{ orden: 1, descripcion: "Partida", cantidad: 1, precio_cents: 100, material_id: null }]),
+      ]);
+      await en(tx, "update presupuestos set estado = 'enviado' where id = $1", [app.borrador]);
+      const t = (await unaEn(tx, "select token from presupuestos where id = $1", [app.borrador])).token;
+      await ser(tx, "anon");
+      return (await unaEn(tx, "select aceptar_presupuesto($1, 'Cliente real', '203.0.113.1', 'UA') as r", [t])).r;
+    });
+    expect(valor(r)).toMatchObject({ ok: true });
+  });
+
+  it("0007 se puede volver a ejecutar y deja lo mismo", async () => {
+    const antes = await foto(base);
+    await base.exec(migracion("0007_auditoria2.sql"));
+    expect(await foto(base)).toEqual(antes);
+  });
+
+  it("volver a ejecutar 0006 no falla; después hay que volver a ejecutar 0007, que deja el semáforo y las reglas", async () => {
+    await base.exec(migracion("0006_obras.sql"));
+    expect(
+      await base.one("select count(*)::int as n from information_schema.columns where table_name = 'obras_resumen' and column_name = 'semaforo'"),
+    ).toEqual({ n: 0 });
+    await base.exec(migracion("0007_auditoria2.sql"));
+    const r = await base.filas(OBRA, "select semaforo, consumido_pct from obras_resumen");
+    expect(valor(r).every((f) => f.semaforo && f.consumido_pct === null)).toBe(true);
+  });
+});
+
+describe("seed sobre 0001 → 0007", () => {
+  async function fotoSeed() {
+    return {
+      presupuestos: await base.q(
+        `select id, numero, estado, aceptado_canal, aceptado_por, aceptado_nombre, aceptado_ip, enviado_por
+           from presupuestos where empresa_id = $1 order by id`,
+        [E1],
+      ),
+      facturas: await base.q("select numero, fecha::text, total_cents::text from facturas order by numero"),
+      obras: await base.q("select id, estado, semaforo, consumido_pct::text from obras_resumen order by id"),
+      contadores: await base.q("select empresa_id, prefijo, anio, ultimo from contadores order by 1, 2, 3"),
+      invitaciones: await base.q("select email, rol, usada_at is not null as usada from invitaciones order by email"),
+    };
+  }
+
+  it("se ejecuta, borra lo de las empresas de demo (también aceptados y facturados) y se puede repetir", async () => {
+    await base.exec(seed());
+    const primera = await fotoSeed();
+    await base.exec(seed());
+    expect(await fotoSeed()).toEqual(primera);
+    expect(await base.one("select count(*)::int as n from presupuestos where id = $1", [app.facturado])).toEqual({ n: 0 });
+    expect(primera.presupuestos).toHaveLength(11);
+    expect(primera.invitaciones.filter((i) => i.usada)).toHaveLength(2);
+    expect(new Set(primera.obras.map((o) => o.semaforo))).toEqual(new Set(["verde", "ambar", "rojo"]));
+  });
+
+  it("los números de presupuesto y factura del seed siguen siendo consecutivos y con su año", async () => {
+    const p = await base.q("select numero from presupuestos where empresa_id = $1 order by numero", [E1]);
+    expect(p.every((x) => /^P-\d{4}-\d{4}$/.test(String(x.numero)))).toBe(true);
+    const f = await base.q("select numero, extract(year from fecha)::int as anio from facturas order by numero");
+    expect(f.every((x) => String(x.numero).startsWith(`F-${x.anio}-`))).toBe(true);
+    expect(await base.one("select estado from presupuestos where id = $1", [SEED.presupuestoCocina])).toEqual({ estado: "aceptado" });
+  });
+
+  it("sin 0007 el seed se niega a ejecutarse y lo dice", async () => {
+    const otra = await baseVacia();
+    try {
+      for (const m of HASTA_0006) await otra.exec(migracion(m));
+      await crearUsuariosDemo(otra);
+      await expect(otra.exec(seed())).rejects.toThrow(/Falta aplicar migrations\/0007_auditoria2\.sql/);
+    } finally {
+      await otra.cerrar();
+    }
+  });
+});

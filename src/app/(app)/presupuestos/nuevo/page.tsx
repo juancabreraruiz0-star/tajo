@@ -6,10 +6,14 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { getSessionProfile } from "@/lib/auth";
 import { IVA_POR_DEFECTO, VALIDEZ_POR_DEFECTO } from "@/lib/domain/presupuestos";
+import { iaConfigurada } from "@/lib/ia/config";
 import { loadOpcionesFormulario } from "../opciones-formulario";
 import { PresupuestoForm } from "../presupuesto-form";
 
 export const metadata: Metadata = { title: "Nuevo presupuesto" };
+
+// «Montar con IA» (D10): la Server Action se ejecuta con el límite de esta ruta y la IA puede tardar 20–60 s.
+export const maxDuration = 60;
 
 interface NuevoPresupuestoPageProps {
   searchParams: Promise<{ cliente?: string | string[] }>;
@@ -52,6 +56,7 @@ export default async function NuevoPresupuestoPage({ searchParams }: NuevoPresup
           clientes={opciones.clientes}
           materiales={opciones.materiales}
           cancelHref={volver.href}
+          ia={iaConfigurada()}
           initial={{
             cliente_id: preseleccionado?.id ?? "",
             titulo: "",

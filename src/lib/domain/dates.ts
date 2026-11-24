@@ -23,6 +23,15 @@ export function formatFecha(valor: string): string {
   return FECHA.format(fecha);
 }
 
+const HORA = new Intl.DateTimeFormat("es-ES", { hour: "numeric", minute: "2-digit", timeZone: ZONA });
+
+/** Fecha y hora de Madrid de un timestamp ISO: «24/11/2026 a las 10:32». */
+export function formatFechaHora(valor: string): string {
+  const fecha = new Date(valor);
+  if (Number.isNaN(fecha.getTime())) throw new Error(`Fecha no válida: «${valor}».`);
+  return `${FECHA.format(fecha)} a las ${HORA.format(fecha)}`;
+}
+
 const FECHA_LARGA = new Intl.DateTimeFormat("es-ES", {
   weekday: "long",
   day: "numeric",
@@ -45,4 +54,58 @@ export function formatMes(fecha: string): string {
   const partes = SOLO_FECHA.exec(fecha);
   if (!partes) throw new Error(`Fecha no válida: «${fecha}».`);
   return NOMBRE_MES.format(new Date(Date.UTC(Number(partes[1]), Number(partes[2]) - 1, 1)));
+}
+
+// Abreviaturas fijas (sin depender de la versión de ICU del navegador o del servidor: unos dan «sept», otros «sep»).
+const MES_CORTO = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"] as const;
+const MES_LARGO = [
+  "enero",
+  "febrero",
+  "marzo",
+  "abril",
+  "mayo",
+  "junio",
+  "julio",
+  "agosto",
+  "septiembre",
+  "octubre",
+  "noviembre",
+  "diciembre",
+] as const;
+
+const DIA_MADRID = new Intl.DateTimeFormat("en-CA", { timeZone: ZONA, year: "numeric", month: "2-digit", day: "2-digit" });
+
+/** Año, mes (1-12) y día de una fecha AAAA-MM-DD (tal cual) o de un timestamp ISO (en hora de Madrid). */
+function partesFecha(valor: string): { anio: number; mes: number; dia: number } {
+  let texto = valor;
+  if (!SOLO_FECHA.test(valor)) {
+    const fecha = new Date(valor);
+    if (Number.isNaN(fecha.getTime())) throw new Error(`Fecha no válida: «${valor}».`);
+    texto = DIA_MADRID.format(fecha);
+  }
+  const [anio, mes, dia] = texto.split("-").map(Number);
+  if (!(mes >= 1 && mes <= 12 && dia >= 1 && dia <= 31)) throw new Error(`Fecha no válida: «${valor}».`);
+  return { anio, mes, dia };
+}
+
+/** Mes abreviado para ejes y etiquetas: "2026-09-01" → "sep". */
+export function formatMesCorto(fecha: string): string {
+  return MES_CORTO[partesFecha(fecha).mes - 1];
+}
+
+/** Mes y año: "2026-11-01" → "noviembre de 2026". */
+export function formatMesAnio(fecha: string): string {
+  const { anio, mes } = partesFecha(fecha);
+  return `${MES_LARGO[mes - 1]} de ${anio}`;
+}
+
+/**
+ * Fecha en letra para leerla de un vistazo: «23 de diciembre». Lleva el año solo si no es el de `hoy` (en Madrid):
+ * «5 de enero de 2027». Acepta AAAA-MM-DD o un timestamp ISO (hora de Madrid).
+ */
+export function formatFechaEnLetra(valor: string, hoy: Date = new Date()): string {
+  const { anio, mes, dia } = partesFecha(valor);
+  if (Number.isNaN(hoy.getTime())) throw new Error("Fecha no válida.");
+  const anioHoy = Number(DIA_MADRID.format(hoy).slice(0, 4));
+  return `${dia} de ${MES_LARGO[mes - 1]}${anio === anioHoy ? "" : ` de ${anio}`}`;
 }

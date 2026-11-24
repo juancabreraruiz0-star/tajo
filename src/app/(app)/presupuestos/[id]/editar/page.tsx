@@ -7,11 +7,15 @@ import { dbErrorMessage } from "@/lib/domain/errors";
 import { centsToEurosInput } from "@/lib/domain/money";
 import { quantityToInput } from "@/lib/domain/quantity";
 import { isUuid } from "@/lib/domain/validation";
+import { iaConfigurada } from "@/lib/ia/config";
 import type { Presupuesto, PresupuestoLinea } from "@/lib/types";
 import { loadOpcionesFormulario } from "../../opciones-formulario";
 import { PresupuestoForm } from "../../presupuesto-form";
 
 export const metadata: Metadata = { title: "Editar presupuesto" };
+
+// «Montar con IA» (D10): la Server Action se ejecuta con el límite de esta ruta y la IA puede tardar 20–60 s.
+export const maxDuration = 60;
 
 type PresupuestoEditable = Pick<
   Presupuesto,
@@ -65,6 +69,7 @@ export default async function EditarPresupuestoPage({ params }: { params: Promis
           clientes={opciones.clientes}
           materiales={opciones.materiales}
           cancelHref={`/presupuestos/${id}`}
+          ia={iaConfigurada()}
           initial={{
             cliente_id: presupuesto.cliente_id,
             titulo: presupuesto.titulo,

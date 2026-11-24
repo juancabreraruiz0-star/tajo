@@ -12,8 +12,10 @@ export function Logo({ tone = "light", size = "md" }: LogoProps) {
   return (
     <span className="inline-flex items-center gap-2.5">
       <span
+        aria-hidden="true"
         className={cn(
-          "flex items-center justify-center rounded-lg bg-amber-500 text-stone-950 shadow-sm",
+          "flex items-center justify-center rounded-[0.6rem] bg-amber-500 text-stone-950",
+          "shadow-[inset_0_1px_0_rgb(255_255_255/0.4),0_1px_2px_rgb(120_53_15/0.3)] ring-1 ring-amber-600/50 ring-inset",
           lg ? "size-11" : "size-9",
         )}
       >
@@ -21,9 +23,9 @@ export function Logo({ tone = "light", size = "md" }: LogoProps) {
       </span>
       <span
         className={cn(
-          "font-bold tracking-tight",
+          "font-bold tracking-[-0.03em]",
           lg ? "text-3xl" : "text-xl",
-          tone === "dark" ? "text-white" : "text-stone-900",
+          tone === "dark" ? "text-white" : "text-stone-950",
         )}
       >
         Tajo

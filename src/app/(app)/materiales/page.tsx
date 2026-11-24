@@ -31,7 +31,7 @@ const COLUMNAS: Column<MaterialFila>[] = [
       </span>
     ),
   },
-  { key: "unidad", header: "Unidad", cell: (m) => m.unidad },
+  { key: "unidad", header: "Unidad", className: "text-stone-500", cell: (m) => m.unidad },
   { key: "precio", header: "Precio", align: "right", cell: (m) => formatEuros(m.precio_cents) },
   {
     key: "stock",
@@ -46,8 +46,10 @@ const COLUMNAS: Column<MaterialFila>[] = [
 
 function filtroClases(activo: boolean) {
   return cn(
-    "inline-flex h-9 items-center gap-1.5 rounded-full px-3.5 text-sm font-medium ring-1 ring-inset transition-colors",
-    activo ? "bg-stone-900 text-white ring-stone-900" : "bg-white text-stone-700 ring-stone-300 hover:bg-stone-100",
+    "inline-flex h-9 items-center gap-1.5 rounded-full px-3.5 text-sm font-medium ring-1 ring-inset transition-colors duration-150",
+    activo
+      ? "bg-slate-900 text-white ring-slate-900"
+      : "bg-white text-stone-700 ring-stone-300 hover:bg-stone-50 hover:ring-stone-400",
   );
 }
 
@@ -96,7 +98,12 @@ export default async function MaterialesPage({ searchParams }: MaterialesPagePro
           icon={<BoxIcon className="size-6" />}
           title="El almacén está vacío"
           description="Da de alta los materiales que usas (azulejo, cemento, tuberías…) para controlar su stock y usarlos en los presupuestos."
-          action={nuevo}
+          action={
+            <LinkButton href="/materiales/nuevo" variant="primary">
+              <PlusIcon className="size-4" />
+              Añadir el primer material
+            </LinkButton>
+          }
         />
       ) : (
         <>
@@ -111,7 +118,7 @@ export default async function MaterialesPage({ searchParams }: MaterialesPagePro
             >
               <AlertIcon className={cn("size-4", soloBajo ? "text-red-300" : "text-red-600")} />
               Solo stock bajo
-              <span className={cn("tabular-nums", soloBajo ? "text-stone-300" : "text-stone-500")}>
+              <span className={cn("tabular-nums", soloBajo ? "text-slate-300" : "text-stone-500")}>
                 ({bajos.length})
               </span>
             </Link>

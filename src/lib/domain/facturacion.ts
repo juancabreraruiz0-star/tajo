@@ -1,7 +1,5 @@
 // Facturación (R12–R14, R18): rangos de meses, sumas de importes y comprobaciones de facturas. Puro.
 
-import { lineTotalCents, type LineaImporte } from "./totals";
-
 /** Rango de fechas AAAA-MM-DD: `desde` incluido, `hasta` excluido (primer día del mes siguiente). */
 export interface RangoFechas {
   desde: string;
@@ -60,7 +58,11 @@ export function percentChange(actual: number, anterior: number): number | null {
   return (actual - anterior) / Math.abs(anterior);
 }
 
-/** ¿La suma de las partidas coincide con la base imponible guardada en la factura? */
-export function lineasCuadranConBase(lineas: readonly LineaImporte[], baseCents: number): boolean {
-  return sumCents(lineas.map(lineTotalCents)) === baseCents;
+/**
+ * ¿La suma de los importes guardados en las partidas de la factura (`factura_lineas.importe_cents`) coincide con la
+ * base imponible guardada en la factura? Se suman los importes tal como se emitieron, sin recalcular
+ * cantidad × precio: la factura es una copia fija.
+ */
+export function importesCuadranConBase(lineas: readonly { importe_cents: number }[], baseCents: number): boolean {
+  return sumCents(lineas.map((l) => l.importe_cents)) === baseCents;
 }

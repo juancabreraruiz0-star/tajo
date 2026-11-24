@@ -15,7 +15,7 @@ interface PaginacionProps {
 }
 
 const deshabilitado =
-  "inline-flex h-11 items-center rounded-lg border border-stone-200 px-4 text-sm font-semibold text-stone-400";
+  "inline-flex h-11 cursor-not-allowed items-center rounded-lg px-4 text-sm font-semibold text-stone-400 ring-1 ring-stone-200 ring-inset";
 
 /** «Anterior / Siguiente» debajo de un listado. No se pinta si todo cabe en una página. */
 export function Paginacion({ estado, total, href, label, className }: PaginacionProps) {
@@ -45,9 +45,9 @@ export function Paginacion({ estado, total, href, label, className }: Paginacion
   return (
     <nav aria-label={label} className={cn("mt-4 flex flex-wrap items-center justify-between gap-3", className)}>
       {anterior}
-      <p className="order-last basis-full text-center text-sm text-stone-600 sm:order-none sm:basis-auto">
+      <p className="order-last basis-full text-center text-sm text-stone-600 tabular-nums sm:order-none sm:basis-auto">
         Página {estado.pagina} de {estado.totalPaginas}
-        <span className="text-stone-400"> · {resumenPagina(estado.pagina, total)}</span>
+        <span className="text-stone-500"> · {resumenPagina(estado.pagina, total)}</span>
       </p>
       {siguiente}
     </nav>

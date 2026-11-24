@@ -37,12 +37,19 @@ export function isClienteSinNif(error: DbErrorLike): boolean {
   return error.code === ERROR_CLIENTE_SIN_NIF;
 }
 
+/** Error propio de consumir_uso_ia() (0005) cuando la empresa ya ha gastado las propuestas con IA del día. */
+export const ERROR_LIMITE_IA = "TJ002";
+
+/** Error propio de consumir_uso_ia() (0007) cuando el usuario ya ha gastado sus propuestas con IA del día. */
+export const ERROR_LIMITE_IA_USUARIO = "TJ003";
+
 /**
  * CHECK de la base (23514) → qué límite se ha saltado. Se busca por el nombre de la restricción, que Postgres pone
  * en el mensaje («… violates check constraint "presupuesto_lineas_precio_max_chk"»). Mismos límites que el dominio.
  */
 const CHECKS: readonly [RegExp, string][] = [
   [/_nif_formato_chk/, "El NIF tiene que tener 9 letras o cifras (ej.: 12345678Z o B12345674)."],
+  [/_nif_valido_chk/, "El NIF no es válido: revisa la letra o el dígito de control."],
   [/_largo_chk/, "Algún texto es demasiado largo. Revisa los campos."],
   [/_importe_max_chk/, "El importe de alguna partida es demasiado alto."],
   [/_precio_max_chk|precio_cents_check/, "El precio tiene que estar entre 0 € y 1.000.000 € por unidad."],
@@ -93,6 +100,12 @@ export function dbErrorMessage(error: DbErrorLike, contexto: DbErrorContext = "g
     case ERROR_CLIENTE_SIN_NIF:
       // facturar_presupuesto() sin NIF del cliente: el mensaje también viene en español y nombra al cliente.
       return message || "El cliente no tiene NIF. Añádelo en su ficha antes de facturar.";
+    case ERROR_LIMITE_IA:
+      // consumir_uso_ia() con la cuota del día gastada: el mensaje ya viene en español.
+      return message || "Has llegado al límite de propuestas con IA de hoy. Vuelve a intentarlo mañana.";
+    case ERROR_LIMITE_IA_USUARIO:
+      // consumir_uso_ia() con la cuota del usuario gastada (15 al día): el mensaje ya viene en español.
+      return message || "Has llegado a tu límite de 15 propuestas con IA de hoy. Vuelve a intentarlo mañana.";
   }
   if (isNetworkError(message)) return SIN_CONEXION;
   return "Ha ocurrido un error inesperado. Inténtalo de nuevo.";

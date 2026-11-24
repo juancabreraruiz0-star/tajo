@@ -3,14 +3,17 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { EstadoBadge } from "@/components/estado-badge";
-import { PencilIcon } from "@/components/icons";
+import { ConoIcon, PencilIcon } from "@/components/icons";
+import { LineaTiempo } from "@/components/linea-tiempo";
 import { Alert } from "@/components/ui/alert";
 import { LinkButton } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { Table, type Column } from "@/components/ui/table";
 import { getSessionProfile, isAdmin } from "@/lib/auth";
+import { textoAceptacion, textoEnviadoPor } from "@/lib/domain/aceptacion";
 import { formatFecha } from "@/lib/domain/dates";
+import { lineaDeTiempo } from "@/lib/domain/linea-tiempo";
 import { dbErrorMessage } from "@/lib/domain/errors";
 import { formatEuros } from "@/lib/domain/money";
 import { isExpired, validUntil } from "@/lib/domain/presupuestos";
@@ -19,10 +22,19 @@ import { nextActions } from "@/lib/domain/status";
 import { budgetTotals, lineTotalCents } from "@/lib/domain/totals";
 import { isUuid } from "@/lib/domain/validation";
 import { getRequestOrigin } from "@/lib/request-origin";
-import type { Presupuesto, PresupuestoLinea } from "@/lib/types";
+import type { Obra, Presupuesto, PresupuestoLinea } from "@/lib/types";
 import { CambiarEstado, EnlacePublico, Facturar, RegenerarEnlace } from "./acciones";
 
 export const metadata: Metadata = { title: "Presupuesto" };
+
+/** La IP y el navegador de la aceptación (0007, D12) solo se piden para gerencia: al resto no le llegan. */
+type PresupuestoDetalle = Omit<Presupuesto, "aceptado_ip" | "aceptado_user_agent"> &
+  Partial<Pick<Presupuesto, "aceptado_ip" | "aceptado_user_agent">>;
+
+const COLUMNAS_PRESUPUESTO =
+  "id, empresa_id, cliente_id, numero, titulo, estado, iva_pct, validez_dias, token, created_at, enviado_at, " +
+  "aceptado_at, aceptado_por, aceptado_canal, aceptado_nombre, enviado_por";
+const COLUMNAS_PRESUPUESTO_GERENCIA = `${COLUMNAS_PRESUPUESTO}, aceptado_ip, aceptado_user_agent`;
 
 type LineaFila = Pick<PresupuestoLinea, "id" | "orden" | "descripcion" | "cantidad" | "precio_cents" | "material_id">;
 type LineaDetalle = LineaFila & { unidad: string | null; importeCents: number };
@@ -41,28 +53,14 @@ const COLUMNAS: Column<LineaDetalle>[] = [
 
 function Dato({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div>
-      <dt className="text-xs font-medium tracking-wide text-stone-500 uppercase">{label}</dt>
+    <div className="min-w-0">
+      <dt className="text-[0.6875rem] font-semibold tracking-wider text-stone-500 uppercase">{label}</dt>
       <dd className="mt-1 text-sm break-words text-stone-900">{children}</dd>
     </div>
   );
 }
 
-const pendiente = <span className="text-stone-400">—</span>;
-
-/** Quién y por dónde se aceptó (D9). */
-function textoAceptacion(presupuesto: Presupuesto, nombreAceptadoPor: string | null): string | null {
-  switch (presupuesto.aceptado_canal) {
-    case "enlace":
-      return "Aceptado por el cliente desde el enlace";
-    case "interno":
-      return nombreAceptadoPor
-        ? `Dado por aceptado por ${nombreAceptadoPor} (gerencia)`
-        : "Dado por aceptado por gerencia";
-    default:
-      return null;
-  }
-}
+const pendiente = <span className="text-stone-500">—</span>;
 
 export default async function PresupuestoPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -74,12 +72,9 @@ export default async function PresupuestoPage({ params }: { params: Promise<{ id
   const [presupuestoRes, lineasRes] = await Promise.all([
     supabase
       .from("presupuestos")
-      .select(
-        "id, empresa_id, cliente_id, numero, titulo, estado, iva_pct, validez_dias, token, created_at, enviado_at, " +
-          "aceptado_at, aceptado_por, aceptado_canal",
-      )
+      .select(admin ? COLUMNAS_PRESUPUESTO_GERENCIA : COLUMNAS_PRESUPUESTO)
       .eq("id", id)
-      .maybeSingle<Presupuesto>(),
+      .maybeSingle<PresupuestoDetalle>(),
     supabase
       .from("presupuesto_lineas")
       .select("id, orden, descripcion, cantidad, precio_cents, material_id")
@@ -101,8 +96,23 @@ export default async function PresupuestoPage({ params }: { params: Promise<{ id
   // Gerencia puede regenerar el enlace en cualquier estado salvo borrador: también hace falta el origen.
   const necesitaOrigen = presupuesto.estado === "enviado" || (admin && presupuesto.estado !== "borrador");
 
-  const [clienteRes, materialesRes, facturaRes, aceptadoPorRes, origin] = await Promise.all([
-    supabase.from("clientes").select("id, nombre").eq("id", presupuesto.cliente_id).maybeSingle<{ id: string; nombre: string }>(),
+  // Misma regla que aceptar_presupuesto() y que el trigger (0004): vencido, nadie puede aceptarlo.
+  const vencido = presupuesto.estado === "enviado" && isExpired(presupuesto.created_at, presupuesto.validez_dias);
+  // WhatsApp solo mientras el cliente puede aceptarlo: con la validez vencida no se le manda el enlace.
+  const ofrecerWhatsApp = presupuesto.estado === "enviado" && !vencido;
+  const conObra = presupuesto.estado === "aceptado" || presupuesto.estado === "facturado";
+
+  // Quién lo dio por aceptado (gerencia) y quién lo envió: nombres de perfiles de la empresa.
+  const perfilIds = [
+    ...new Set([presupuesto.aceptado_por, presupuesto.enviado_por].filter((p): p is string => p !== null)),
+  ];
+
+  const [clienteRes, materialesRes, facturaRes, perfilesRes, origin, obraRes, empresaRes] = await Promise.all([
+    supabase
+      .from("clientes")
+      .select("id, nombre, telefono")
+      .eq("id", presupuesto.cliente_id)
+      .maybeSingle<{ id: string; nombre: string; telefono: string | null }>(),
     materialIds.length > 0
       ? supabase
           .from("materiales")
@@ -112,12 +122,32 @@ export default async function PresupuestoPage({ params }: { params: Promise<{ id
       : null,
     // La factura solo la ve gerencia (R2).
     admin && presupuesto.estado === "facturado"
-      ? supabase.from("facturas").select("id, numero").eq("presupuesto_id", id).maybeSingle<{ id: string; numero: string }>()
+      ? supabase
+          .from("facturas")
+          .select("id, numero, fecha")
+          .eq("presupuesto_id", id)
+          .maybeSingle<{ id: string; numero: string; fecha: string }>()
       : null,
-    presupuesto.aceptado_por
-      ? supabase.from("perfiles").select("nombre").eq("id", presupuesto.aceptado_por).maybeSingle<{ nombre: string }>()
+    perfilIds.length > 0
+      ? supabase
+          .from("perfiles")
+          .select("id, nombre")
+          .in("id", perfilIds)
+          .overrideTypes<{ id: string; nombre: string }[], { merge: false }>()
       : null,
     necesitaOrigen ? getRequestOrigin() : null,
+    // La obra se crea sola al aceptar (0006).
+    conObra
+      ? supabase
+          .from("obras")
+          .select("id, estado, fecha_inicio, fecha_fin")
+          .eq("presupuesto_id", id)
+          .maybeSingle<Pick<Obra, "id" | "estado" | "fecha_inicio" | "fecha_fin">>()
+      : null,
+    // Nombre de la empresa para firmar el mensaje de WhatsApp.
+    ofrecerWhatsApp
+      ? supabase.from("empresas").select("nombre").eq("id", perfil.empresa_id).maybeSingle<{ nombre: string }>()
+      : null,
   ]);
 
   const unidades = new Map((materialesRes?.data ?? []).map((m) => [m.id, m.unidad]));
@@ -132,14 +162,50 @@ export default async function PresupuestoPage({ params }: { params: Promise<{ id
   );
 
   const validoHasta = validUntil(presupuesto.created_at, presupuesto.validez_dias);
-  // Misma regla que aceptar_presupuesto() y que el trigger (0004): vencido, nadie puede aceptarlo.
-  const vencido = presupuesto.estado === "enviado" && isExpired(presupuesto.created_at, presupuesto.validez_dias);
   const acciones = nextActions(presupuesto.estado, perfil.rol, { vencido });
-  const aceptacion = textoAceptacion(presupuesto, aceptadoPorRes?.data?.nombre ?? null);
   const cliente = clienteRes.data;
   const factura = facturaRes?.data ?? null;
+  const obra = obraRes?.data ?? null;
+  const nombresPerfiles = new Map((perfilesRes?.data ?? []).map((p) => [p.id, p.nombre]));
+  const nombrePerfil = (perfilId: string | null) => (perfilId ? (nombresPerfiles.get(perfilId) ?? null) : null);
+  const aceptadoPor = nombrePerfil(presupuesto.aceptado_por);
+  const enviadoPor = nombrePerfil(presupuesto.enviado_por);
+  const constanciaAceptacion = textoAceptacion({
+    canal: presupuesto.aceptado_canal,
+    aceptadoAt: presupuesto.aceptado_at,
+    aceptadoNombre: presupuesto.aceptado_nombre,
+    aceptadoPor,
+  });
+  const constanciaEnvio = textoEnviadoPor(enviadoPor, presupuesto.enviado_at);
+  // IP y navegador de la aceptación por enlace: solo llegan a gerencia.
+  const evidencia =
+    presupuesto.aceptado_canal === "enlace" && (presupuesto.aceptado_ip || presupuesto.aceptado_user_agent)
+      ? { ip: presupuesto.aceptado_ip ?? null, navegador: presupuesto.aceptado_user_agent ?? null }
+      : null;
+  const hitos = lineaDeTiempo({
+    estado: presupuesto.estado,
+    created_at: presupuesto.created_at,
+    enviado_at: presupuesto.enviado_at,
+    aceptado_at: presupuesto.aceptado_at,
+    aceptado_canal: presupuesto.aceptado_canal,
+    aceptadoPor,
+    aceptadoNombre: presupuesto.aceptado_nombre,
+    enviadoPor,
+    vencido,
+    validoHasta: formatFecha(validoHasta),
+    factura,
+    obra,
+  });
   const errorCarga =
-    lineasRes.error ?? clienteRes.error ?? materialesRes?.error ?? facturaRes?.error ?? aceptadoPorRes?.error ?? null;
+    lineasRes.error ??
+    clienteRes.error ??
+    materialesRes?.error ??
+    facturaRes?.error ??
+    perfilesRes?.error ??
+    obraRes?.error ??
+    // Sin el nombre de la empresa, el mensaje de WhatsApp saldría sin firma: mejor avisar.
+    empresaRes?.error ??
+    null;
 
   return (
     <>
@@ -158,6 +224,11 @@ export default async function PresupuestoPage({ params }: { params: Promise<{ id
               <PencilIcon className="size-4" />
               Editar
             </LinkButton>
+          ) : obra ? (
+            <LinkButton href={`/obras/${obra.id}`}>
+              <ConoIcon className="size-4" />
+              Ver la obra
+            </LinkButton>
           ) : undefined
         }
       />
@@ -174,10 +245,19 @@ export default async function PresupuestoPage({ params }: { params: Promise<{ id
         </Alert>
       )}
 
+      <Card className="mb-6 px-4 py-5 sm:px-6">
+        <section aria-labelledby="estado-titulo">
+          <h2 id="estado-titulo" className="sr-only">
+            Historial del presupuesto
+          </h2>
+          <LineaTiempo hitos={hitos} />
+        </section>
+      </Card>
+
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="min-w-0 space-y-6">
           <Card className="p-4 sm:p-6">
-            <dl className="grid gap-5 sm:grid-cols-3">
+            <dl className="grid grid-cols-2 gap-x-6 gap-y-5 sm:grid-cols-4 lg:grid-cols-2 2xl:grid-cols-4">
               <Dato label="Cliente">
                 {cliente ? (
                   <Link href={`/clientes/${cliente.id}`} className="font-medium text-amber-700 hover:underline">
@@ -187,28 +267,54 @@ export default async function PresupuestoPage({ params }: { params: Promise<{ id
                   pendiente
                 )}
               </Dato>
-              <Dato label="Creado">{formatFecha(presupuesto.created_at)}</Dato>
               <Dato label="Validez">
-                {presupuesto.validez_dias} días · hasta el {formatFecha(validoHasta)}
-              </Dato>
-              <Dato label="Enviado">{presupuesto.enviado_at ? formatFecha(presupuesto.enviado_at) : pendiente}</Dato>
-              <Dato label="Aceptado">
-                {presupuesto.aceptado_at ? (
-                  <>
-                    {formatFecha(presupuesto.aceptado_at)}
-                    {aceptacion && <span className="block text-xs text-stone-600">{aceptacion}</span>}
-                  </>
-                ) : (
-                  pendiente
-                )}
+                {presupuesto.validez_dias} días
+                <span className="block text-xs text-stone-500 tabular-nums">hasta el {formatFecha(validoHasta)}</span>
               </Dato>
               <Dato label="IVA">{presupuesto.iva_pct} %</Dato>
+              <Dato label="Total">
+                <span className="font-semibold tabular-nums">{formatEuros(totales.totalCents)}</span>
+              </Dato>
             </dl>
           </Card>
 
+          {(constanciaEnvio || constanciaAceptacion) && (
+            <Card className="p-4 sm:p-6">
+              <section aria-labelledby="constancia-titulo" className="space-y-2 text-sm text-stone-700">
+                <h2 id="constancia-titulo" className="text-[0.9375rem] font-semibold tracking-tight text-stone-900">
+                  Constancia
+                </h2>
+                {constanciaEnvio && <p>{constanciaEnvio}.</p>}
+                {constanciaAceptacion && <p className="font-medium text-stone-900">{constanciaAceptacion}.</p>}
+                {evidencia && (
+                  <details className="rounded-lg bg-stone-50 px-3 py-2 text-stone-600">
+                    <summary className="cursor-pointer rounded-sm text-sm font-medium text-stone-700 select-none hover:text-amber-800">
+                      IP y navegador de la aceptación
+                    </summary>
+                    <dl className="mt-2 space-y-1.5 text-xs">
+                      <div>
+                        <dt className="inline font-semibold text-stone-700">IP: </dt>
+                        <dd className="inline font-mono break-all">{evidencia.ip ?? "no consta"}</dd>
+                      </div>
+                      <div>
+                        <dt className="inline font-semibold text-stone-700">Navegador: </dt>
+                        <dd className="inline font-mono break-all">{evidencia.navegador ?? "no consta"}</dd>
+                      </div>
+                    </dl>
+                    <p className="mt-2 text-xs text-pretty text-stone-500">
+                      Los registra el servidor de Tajo al aceptar. Son una constancia razonable, no una prueba forense:
+                      el enlace es al portador.
+                    </p>
+                  </details>
+                )}
+              </section>
+            </Card>
+          )}
+
           <section aria-labelledby="partidas-titulo">
-            <h2 id="partidas-titulo" className="mb-3 text-lg font-semibold text-stone-900">
-              Partidas
+            <h2 id="partidas-titulo" className="mb-3 text-lg font-semibold tracking-tight text-stone-900">
+              Partidas{" "}
+              <span className="text-sm font-normal text-stone-500 tabular-nums">({lineas.length})</span>
             </h2>
             {lineas.length === 0 ? (
               <Alert tone="info">
@@ -229,16 +335,18 @@ export default async function PresupuestoPage({ params }: { params: Promise<{ id
                   <dt className="text-stone-600">IVA ({presupuesto.iva_pct} %)</dt>
                   <dd className="font-medium tabular-nums">{formatEuros(totales.ivaCents)}</dd>
                 </div>
-                <div className="flex justify-between gap-4 border-t border-stone-200 pt-2 text-base">
-                  <dt className="font-semibold">Total</dt>
-                  <dd className="font-bold tabular-nums">{formatEuros(totales.totalCents)}</dd>
+                <div className="flex items-baseline justify-between gap-4 border-t border-stone-200 pt-3">
+                  <dt className="font-semibold text-stone-900">Total</dt>
+                  <dd className="text-xl font-semibold tracking-tight text-stone-950 tabular-nums">
+                    {formatEuros(totales.totalCents)}
+                  </dd>
                 </div>
               </dl>
             </Card>
           </section>
         </div>
 
-        <Card className="h-fit">
+        <Card className="h-fit lg:sticky lg:top-6">
           <CardHeader title="Siguiente paso" />
           <CardBody className="space-y-4 text-sm text-stone-600">
             {presupuesto.estado === "borrador" && (
@@ -265,7 +373,22 @@ export default async function PresupuestoPage({ params }: { params: Promise<{ id
 
             {presupuesto.estado === "enviado" && (
               <>
-                {acciones.includes("copiar_enlace") && <EnlacePublico token={presupuesto.token} serverOrigin={origin} />}
+                {acciones.includes("copiar_enlace") && (
+                  <EnlacePublico
+                    token={presupuesto.token}
+                    serverOrigin={origin}
+                    whatsapp={
+                      ofrecerWhatsApp
+                        ? {
+                            cliente: cliente?.nombre ?? null,
+                            telefono: cliente?.telefono ?? null,
+                            titulo: presupuesto.titulo,
+                            empresa: empresaRes?.data?.nombre ?? null,
+                          }
+                        : undefined
+                    }
+                  />
+                )}
                 <p className="border-t border-stone-200 pt-4">
                   {vencido
                     ? "La validez ha vencido: ya no se puede aceptar."

@@ -93,3 +93,44 @@ Una auditoría independiente del código (2026-11-23) encontró fallos que el bu
   - Cuota en la base de datos: `consumir_uso_ia()` (migración 0005), 40 usos al día por empresa, para que una clave pública de demo no se pueda gastar sin control.
 - **Rediseño** sin cambiar la identidad de D6 (stone, ámbar y slate; Inter): página pública del presupuesto cuidada (es lo que ve el cliente final), panel con gráfica de facturación de 6 meses y embudo de presupuestos en SVG propio (sin librerías), login con identidad, estados vacíos, mejor móvil y transiciones con CSS que respetan `prefers-reduced-motion`.
 - Después, **segunda auditoría externa** con un agente nuevo sobre el conjunto.
+
+## D11 · Obras: control de obra con margen real (T16)
+
+Lo que convierte Tajo de facturador en ERP: cada presupuesto aceptado es una obra y se controla lo que cuesta de verdad.
+
+- **`obras`**: una por presupuesto (`presupuesto_id` único). Se crea **sola** cuando el presupuesto pasa a `aceptado` (trigger; también las aceptadas o facturadas que ya existían). Campos: cliente, título, `encargado_id` (perfil), `estado` (`pendiente` → `en_curso` ⇄ `parada` → `terminada`), `fecha_inicio`, `fecha_fin_prevista`, `fecha_fin`, `notas`.
+- **`partes`** (parte de trabajo): obra, fecha, `autor_id` (lo pone la base: `auth.uid()`), `horas`, `notas` y **`coste_hora_cents` copiado** de la empresa al crearlo (nueva columna `empresas.coste_hora_cents`: 25 € por defecto en la columna y 26 € en la demo, que lo pone el seed). **`parte_materiales`**: material, cantidad y **coste unitario copiado** del material al crearlo.
+- **Coste de los materiales**: nueva columna `materiales.coste_cents` (lo que le cuesta a la empresa; si es nulo, se usa el precio de venta). El stock **no** se toca en los partes: se sigue descontando al facturar (R13), para no contarlo dos veces.
+- **Margen**: presupuestado = base del presupuesto (sin IVA). Coste real = Σ horas × coste/hora + Σ cantidad × coste del material. Margen = presupuestado − coste real. Vista `obras_resumen` (`security_invoker`) con todo calculado en SQL; la misma regla en una función pura de `src/lib/domain` con tests.
+- **Permisos (RLS)**: todos los de la empresa ven obras y partes. Cualquier usuario de la empresa añade partes a una obra `en_curso`. Su autor puede editar o borrar su parte el mismo día; gerencia, siempre. Cambiar estado, encargado y fechas de la obra: gerencia o el encargado de esa obra. Nadie borra obras.
+- **Pantallas**: `/obras` (tarjetas con presupuestado frente a real y semáforo), `/obras/[id]` (datos, partes, «Añadir parte» pensado para el móvil, desglose del coste), enlace desde el presupuesto, «Obras» en el menú y, en el panel, obras en curso y obras en pérdidas (solo gerencia ve importes de margen).
+- Migración `0006_obras.sql`; orden 0001 → 0006 → seed.
+
+## D12 · Correcciones de la segunda auditoría externa (T17)
+
+La segunda auditoría (`docs/AUDITORIA-2.md`) dio por buenos el aislamiento, los roles, la facturación y la IA, y encontró esto. Se corrige así:
+
+- **Aceptación por enlace con evidencia.** Un enlace es al portador: quien lo tenga puede aceptar, también un empleado desde una ventana de incógnito. No se puede impedir sin cuentas para los clientes, así que se deja constancia:
+  - el cliente escribe su nombre para aceptar;
+  - se guardan `aceptado_nombre`, `aceptado_ip` y `aceptado_user_agent`, que la Server Action saca de las cabeceras de la petición;
+  - se guarda `enviado_por`, el perfil que lo marcó como enviado;
+  - el detalle del presupuesto lo enseña.
+  - Firma nueva: `aceptar_presupuesto(p_token uuid, p_nombre text, p_ip text, p_user_agent text)`, solo `anon`. La de un argumento se elimina.
+  - La IP y el navegador los manda el servidor de la app, pero quien llame a la función directamente con la clave anónima puede inventarlos. Es evidencia razonable, no una prueba forense, y el README lo dice.
+- **El empleado ve solo el semáforo.**
+  - `obras_resumen` añade la columna `semaforo` (`verde`, `ambar` o `rojo`) para todos.
+  - Para quien no es gerencia, `consumido_pct` sale a null, igual que los importes.
+  - Los costes copiados siguen siendo legibles por la API dentro de la empresa. Es un límite conocido y documentado: no es un secreto fuerte.
+- **Cuota de IA también por usuario:** como mucho 15 propuestas al día por usuario, dentro de las 40 de la empresa.
+- **NIF validado en la base** con letra o dígito de control (función SQL con el mismo algoritmo que el dominio).
+- **Partes:**
+  - como mucho 24 h por autor y día;
+  - la fecha del parte, como mucho 30 días hacia atrás;
+  - `fecha_inicio` no se cambia una vez empezada la obra.
+- **Borrar presupuestos:** solo en `borrador`, `enviado` o `rechazado`. Un aceptado o facturado ya no se borra.
+- **`guardar_presupuesto`:**
+  - rechaza cantidades con más de 3 decimales, en vez de redondearlas;
+  - el `orden` tiene que ser mayor que 0 y no repetirse.
+- **Invitaciones:** se marcan como usadas (`usada_at`). El perfil solo se crea con el email confirmado, también si la confirmación llega después.
+- **Tests de base de datos en el repo:** banco con PGlite en `npm run test:pglite`, que no necesita Supabase ni contraseñas, y CI de GitHub Actions con `npm run check` y `test:pglite`.
+- Migración `0007_auditoria2.sql`. Orden: 0001 → 0007 → seed.

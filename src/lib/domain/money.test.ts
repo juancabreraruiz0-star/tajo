@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { centsToEurosInput, eurosToCents, formatEuros } from "./money";
+import { centsToEurosInput, eurosToCents, formatEuros, formatEurosCorto } from "./money";
 
 // Intl usa espacios duros (U+00A0 / U+202F) antes del símbolo.
 const normaliza = (s: string) => s.replace(/[  ]/g, " ");
@@ -112,5 +112,30 @@ describe("formatEuros", () => {
 
   it("es-ES no agrupa los miles con 4 cifras enteras", () => {
     expect(normaliza(formatEuros(123456))).toBe("1234,56 €");
+  });
+});
+
+describe("formatEurosCorto", () => {
+  it.each([
+    [0, "0 €"],
+    [85_000, "850 €"],
+    [99_949, "999 €"],
+    [99_960, "1 mil €"],
+    [100_000, "1 mil €"],
+    [1_240_000, "12,4 mil €"],
+    [12_345_678, "123,5 mil €"],
+    [99_996_000, "1 M€"],
+    [123_456_789, "1,2 M€"],
+    [-1_240_000, "-12,4 mil €"],
+  ])("%i céntimos → %s", (cents, texto) => {
+    expect(normaliza(formatEurosCorto(cents))).toBe(texto);
+  });
+
+  it("no parte la línea entre la cifra y la unidad", () => {
+    expect(formatEurosCorto(1_240_000)).toBe("12,4 mil €");
+  });
+
+  it("rechaza importes que no son céntimos enteros", () => {
+    expect(() => formatEurosCorto(10.5)).toThrow("céntimos enteros");
   });
 });

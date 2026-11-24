@@ -20,7 +20,7 @@ type ClienteFila = Pick<Cliente, "id" | "nombre" | "nif" | "telefono" | "email" 
 
 const COLUMNAS: Column<ClienteFila>[] = [
   { key: "nombre", header: "Nombre", primary: true, cell: (c) => c.nombre },
-  { key: "nif", header: "NIF", className: "whitespace-nowrap font-mono text-xs", cell: (c) => c.nif ?? "—" },
+  { key: "nif", header: "NIF", className: "whitespace-nowrap font-mono text-[0.8125rem]", cell: (c) => c.nif ?? "—" },
   { key: "telefono", header: "Teléfono", cell: (c) => c.telefono ?? "—" },
   { key: "email", header: "Email", cell: (c) => c.email ?? "—" },
   { key: "direccion", header: "Dirección", hideOnMobile: true, cell: (c) => c.direccion ?? "—" },
@@ -82,7 +82,7 @@ export default async function ClientesPage({ searchParams }: ClientesPageProps) 
             type="search"
             defaultValue={busqueda}
             placeholder="Buscar por nombre…"
-            className="block h-11 w-full rounded-lg border border-stone-300 bg-white pr-3 pl-10 text-base shadow-sm placeholder:text-stone-400 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/40 focus:outline-none sm:text-sm"
+            className="block h-11 w-full rounded-lg border border-stone-300 bg-white pr-3 pl-10 text-base shadow-tarjeta transition-[border-color,box-shadow] duration-150 placeholder:text-stone-400 hover:border-stone-400 focus:border-amber-500 focus:ring-4 focus:ring-amber-500/20 focus:outline-none sm:text-sm"
           />
         </div>
         <Button type="submit" variant="secondary">
@@ -112,7 +112,12 @@ export default async function ClientesPage({ searchParams }: ClientesPageProps) 
             icon={<UsersIcon className="size-6" />}
             title="Todavía no hay clientes"
             description="Da de alta a tu primer cliente para poder hacerle presupuestos."
-            action={nuevo}
+            action={
+              <LinkButton href="/clientes/nuevo" variant="primary">
+                <PlusIcon className="size-4" />
+                Dar de alta el primer cliente
+              </LinkButton>
+            }
           />
         )
       ) : (

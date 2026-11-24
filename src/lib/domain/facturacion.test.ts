@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   inRange,
-  lineasCuadranConBase,
+  importesCuadranConBase,
   monthRange,
   percentChange,
   sumCents,
@@ -105,31 +105,34 @@ describe("percentChange", () => {
   });
 });
 
-describe("lineasCuadranConBase", () => {
-  const lineas = [
-    { cantidad: 2.5, precioCents: 1_999 }, // 4.997,5 → 4.998
-    { cantidad: 1, precioCents: 10_000 },
+describe("importesCuadranConBase", () => {
+  // Reforma de baño con 3 partidas: los importes son los guardados en factura_lineas al facturar.
+  const bano = [
+    { importe_cents: 45_325 }, // alicatado: 18,5 m² × 24,50 € = 453,25 €
+    { importe_cents: 38_900 }, // plato de ducha 80×120 colocado = 389,00 €
+    { importe_cents: 21_600 }, // fontanería: 6,75 h × 32,00 € = 216,00 €
   ];
 
-  it("compara la suma de importes redondeados por partida con la base guardada", () => {
-    expect(lineasCuadranConBase(lineas, 14_998)).toBe(true);
-    expect(lineasCuadranConBase(lineas, 14_997)).toBe(false);
+  it("suma los importes guardados de las partidas y los compara con la base", () => {
+    expect(importesCuadranConBase(bano, 105_825)).toBe(true); // base 1.058,25 €
+    expect(importesCuadranConBase(bano, 105_826)).toBe(false);
+    // No cuadra con el total con IVA (21 % → 1.280,48 €): se compara con la base.
+    expect(importesCuadranConBase(bano, 128_048)).toBe(false);
   });
 
-  it("reforma de baño con 3 partidas reales", () => {
-    const bano = [
-      { cantidad: 18.5, precioCents: 2_450 }, // alicatado: 18,5 m² × 24,50 € = 453,25 €
-      { cantidad: 1, precioCents: 38_900 }, // plato de ducha 80×120 colocado = 389,00 €
-      { cantidad: 6.75, precioCents: 3_200 }, // fontanería: 6,75 h × 32,00 € = 216,00 €
-    ];
-    expect(lineasCuadranConBase(bano, 105_825)).toBe(true); // base 1.058,25 €
-    expect(lineasCuadranConBase(bano, 105_826)).toBe(false);
-    // No cuadra con el total con IVA (21 % → 1.280,48 €): se compara con la base.
-    expect(lineasCuadranConBase(bano, 128_048)).toBe(false);
+  it("no recalcula cantidad × precio: manda el importe guardado", () => {
+    // 2,5 × 19,99 € daría 49,98 €, pero la partida se emitió con 49,97 € y la base se calculó con ese importe.
+    const lineas = [{ cantidad: 2.5, precio_cents: 1_999, importe_cents: 4_997 }];
+    expect(importesCuadranConBase(lineas, 4_997)).toBe(true);
+    expect(importesCuadranConBase(lineas, 4_998)).toBe(false);
   });
 
   it("sin partidas cuadra solo con base 0", () => {
-    expect(lineasCuadranConBase([], 0)).toBe(true);
-    expect(lineasCuadranConBase([], 100)).toBe(false);
+    expect(importesCuadranConBase([], 0)).toBe(true);
+    expect(importesCuadranConBase([], 100)).toBe(false);
+  });
+
+  it("rechaza importes que no son céntimos enteros", () => {
+    expect(() => importesCuadranConBase([{ importe_cents: 10.5 }], 10)).toThrow("céntimos enteros");
   });
 });

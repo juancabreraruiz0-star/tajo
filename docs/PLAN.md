@@ -18,9 +18,14 @@ Gestionado por el orquestador. Cada tarea pasa por develop → testing hasta `AP
 | T10 | Revisión final completa + README | R19–R21 | ✅ aprobado (2026-11-23); R21 pendiente del despliegue |
 | T11a | Auditoría externa · base de datos: migración 0004 (invitaciones, aceptación interna solo admin, copia fija de la factura y NIF, checks y bigint, alta forzada, regenerar enlace, marcas con `current_user`, vista de totales), seed y tests `test:db` | R2, R3, R9, R11–R14 · D9 | ✅ aprobado (2026-11-23, 3.ª vuelta: 1.ª rechazada porque la cantidad máxima de la base era menor que la de la app; 2.ª con mejoras de testing). Probado de verdad en PGlite: 124 comprobaciones |
 | T11b | Auditoría externa · aplicación: listados paginados con totales en SQL, factura desde la copia, NIF en clientes, aceptar interno solo admin, regenerar enlace, cabeceras, Next actualizado, detalles visuales y README | R2, R4, R9–R14, R19 · D9 | ✅ aprobado (2026-11-23, 1.ª vuelta). La base real pasa `npm run test:db`: 57/57 |
-| T12 | Presupuesto con IA (D10): acción, validación de la respuesta en dominio, cuota en 0005, botón en el formulario | R6 · D10 | ⏳ pendiente |
-| T13 | Rediseño (D10): página pública, panel con gráficas, login, estados vacíos, móvil | R11, R17–R19 · D10 | ⏳ pendiente |
-| T14 | Segunda auditoría externa y correcciones | todos | ⏳ pendiente |
+| T12 | Presupuesto con IA (D10): acción, validación de la respuesta en dominio, cuota en 0005, botón en el formulario | R6 · D10 | ✅ aprobado (2026-11-23), más una vuelta de mejoras de testing también aprobada: devolución de usos con reserva (una función que solo restara 1 permitía usos infinitos), unidad del material, accesibilidad y tests del cliente de la API |
+| T13 | Rediseño (D10): página pública, panel con gráficas, login, estados vacíos, móvil | R11, R17–R19 · D10 | ✅ aprobado (2026-11-23, 1.ª vuelta). La página pública ya no deja aceptar a un empleado con sesión |
+| T14 | Segunda auditoría externa | todos | ✅ hecha (2026-11-24): `docs/AUDITORIA-2.md`. 93 ataques en PGlite que no pasan; 2 vulnerables y hallazgos medios y bajos que se corrigen en T17 |
+| T15 | Guía de la demo dentro de la app («Prueba esto en 2 minutos», pasos que se marcan solos, se puede cerrar) y botón «Enviar por WhatsApp» del presupuesto enviado | R10, R20 | ✅ aprobado (2026-11-24, hecho y revisado junto con T16b) |
+| T16a | Obras · base de datos y dominio (D11): 0006, vista de resumen, márgenes puros con tests, seed con obras y partes, comprobaciones en PGlite y test:db | R2, R3 · D11 | ✅ aprobado (2026-11-24), más una vuelta de endurecimiento de testing también aprobada (coste de materiales solo gerencia, obra terminada congelada, fechas de partes, mensajes en español). PGlite: 178 + 64 de testing |
+| T16b | Obras · pantallas (D11) junto con T15 | R19 · D11 | ✅ aprobado (2026-11-24, 1.ª vuelta). Testing ejecutó en PGlite las mismas consultas de las pantallas como encargado y gerencia (35/35) |
+| T17a | Segunda auditoría · base de datos (D12): 0007, tests PGlite en el repo y CI | todos · D12 | ✅ aprobado (2026-11-24, 2.ª vuelta: la 1.ª dejaba pasar cantidades como texto). PGlite en el repo: 106 tests; CI en GitHub Actions |
+| T17b | Segunda auditoría · aplicación (D12): aceptación con nombre y evidencia, semáforo para el empleado, detalles de testing, README | todos · D12 | ✅ aprobado (2026-11-24), con un retoque final del README y del nombre al aceptar comprobado por el orquestador |
 
 ## Sugerencias de testing resueltas en T10a/T10b
 
