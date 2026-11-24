@@ -31,7 +31,7 @@ afterAll(() => base?.cerrar());
 const TABLAS_Y_VISTAS = [
   "empresas", "perfiles", "invitaciones", "clientes", "materiales", "presupuestos", "presupuesto_lineas",
   "presupuestos_con_totales", "facturas", "factura_lineas", "contadores", "uso_ia", "uso_ia_reservas", "uso_ia_perfiles",
-  "obras", "partes", "parte_materiales", "obras_resumen",
+  "obras", "partes", "parte_materiales", "obras_resumen", "ia_propuestas",
 ];
 
 describe("superficie de la base", () => {
@@ -80,6 +80,7 @@ describe("superficie de la base", () => {
       `select regenerar_enlace('${SEED.presupuestoEnviado}')`,
       "select * from consumir_uso_ia()",
       `select devolver_uso_ia('${SEED.presupuestoEnviado}')`,
+      `select guardar_propuesta_ia('${SEED.presupuestoEnviado}', '${"a".repeat(64)}', '{}', false)`,
       `select guardar_parte(null, '${SEED.obraCocina}', null, 1, null, '[]')`,
       `select presupuesto_base_cents('${SEED.presupuestoEnviado}')`,
       "select nif_valido('12345678Z')",

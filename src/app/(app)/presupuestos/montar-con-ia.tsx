@@ -10,12 +10,15 @@ import { LIMITES_PRESUPUESTO, type PartidaRaw } from "@/lib/domain/presupuestos"
 import { LIMITES_IA, validarDescripcionObra } from "@/lib/domain/sugerencias";
 
 interface MontarConIaProps {
-  /** ¿Hay ya partidas escritas en el formulario? Si las hay, se ofrece sustituirlas. */
+  /** ¿Hay ya partidas escritas en el formulario? Si las hay, se ofrece añadir la propuesta detrás en vez de sustituirlas. */
   hayPartidas: boolean;
   /** ¿Tiene ya el presupuesto el máximo de partidas? Entonces solo se puede pedir para sustituirlas. */
   lleno: boolean;
-  /** Mete las partidas en el formulario. Devuelve cuántas han cabido (máx. 100 por presupuesto). */
-  onPropuesta: (partidas: PartidaRaw[], sustituir: boolean) => number;
+  /**
+   * Mete las partidas en el formulario: sustituyen a las que hay o, con `anadir`, van detrás. Devuelve cuántas han
+   * cabido (máx. 100 por presupuesto).
+   */
+  onPropuesta: (partidas: PartidaRaw[], anadir: boolean) => number;
 }
 
 interface Resultado {
@@ -25,7 +28,10 @@ interface Resultado {
   sinHueco: number;
   descartadas: number;
   supuestos: string[];
-  quedan: number;
+  /** Misma descripción y mismo almacén que una propuesta anterior: la misma, sin gastar cuota (D14). */
+  repetida: boolean;
+  /** null si no ha gastado ninguna propuesta (repetida). */
+  quedan: number | null;
 }
 
 const EJEMPLO =
@@ -46,9 +52,10 @@ function plural(n: number, uno: string, varios: string): string {
 }
 
 function resumen(r: Resultado): string {
-  const partes = [
-    `${r.sustituidas ? "Se han puesto" : "Se han añadido"} ${plural(r.anadidas, "partida", "partidas")} propuestas por la IA. Revísalas antes de guardar.`,
-  ];
+  const partes = r.repetida ? ["Misma descripción que una propuesta anterior: mismas partidas."] : [];
+  partes.push(
+    `${r.sustituidas ? "Se han puesto" : "Se han añadido"} ${plural(r.anadidas, "partida", "partidas")} propuestas por la IA${r.sustituidas ? " en lugar de las que había" : ""}. Revísalas antes de guardar.`,
+  );
   if (r.sinHueco > 0) {
     partes.push(`${plural(r.sinHueco, "partida no ha cabido", "partidas no han cabido")}: un presupuesto tiene como mucho 100.`);
   }
@@ -58,9 +65,11 @@ function resumen(r: Resultado): string {
   return partes.join(" ");
 }
 
-function quedanTexto(quedan: number): string {
+function quedanTexto(quedan: number | null): string {
+  if (quedan === null) return "Esta no ha gastado ninguna de tus propuestas con IA de hoy.";
+  // Puede acabarse la cuota del usuario (15) o la de la empresa (40): el mensaje vale para las dos.
   return quedan === 0
-    ? "Has gastado las propuestas con IA de hoy. Mañana vuelves a tener 40."
+    ? "Has gastado las propuestas con IA de hoy. Mañana se renuevan."
     : `Te ${quedan === 1 ? "queda" : "quedan"} ${plural(quedan, "propuesta", "propuestas")} con IA hoy.`;
 }
 
@@ -77,12 +86,13 @@ export function MontarConIa({ hayPartidas, lleno, onPropuesta }: MontarConIaProp
     texto: `${id}-texto`,
     ayuda: `${id}-ayuda`,
     error: `${id}-error`,
-    sustituir: `${id}-sustituir`,
+    anadir: `${id}-anadir`,
     lleno: `${id}-lleno`,
   };
 
   const [texto, setTexto] = useState("");
-  const [sustituir, setSustituir] = useState(false);
+  /** Por defecto la propuesta sustituye a las partidas que hay; marcado, va detrás. */
+  const [anadir, setAnadir] = useState(false);
   /** Error de la descripción (junto al campo). */
   const [errorCampo, setErrorCampo] = useState<string | null>(null);
   /** Error de la propuesta (servidor, cuota, IA). */
@@ -101,7 +111,7 @@ export function MontarConIa({ hayPartidas, lleno, onPropuesta }: MontarConIaProp
 
   function proponer() {
     // Sin hueco para partidas nuevas no se pide nada (no se gasta un uso de la cuota).
-    if (pending || (lleno && !sustituir)) return;
+    if (pending || (lleno && anadir)) return;
     const descripcion = validarDescripcionObra(texto);
     setResultado(null);
     setErrorIa(null);
@@ -111,7 +121,8 @@ export function MontarConIa({ hayPartidas, lleno, onPropuesta }: MontarConIaProp
     }
     setErrorCampo(null);
     setSegundos(0);
-    const sustituirAhora = sustituir && hayPartidas;
+    const anadirAhora = anadir && hayPartidas;
+    const sustituidas = !anadir && hayPartidas;
     startTransition(async () => {
       let respuesta: Awaited<ReturnType<typeof sugerirPartidas>>;
       try {
@@ -124,16 +135,17 @@ export function MontarConIa({ hayPartidas, lleno, onPropuesta }: MontarConIaProp
         setErrorIa(respuesta.error);
         return;
       }
-      const anadidas = onPropuesta(respuesta.partidas, sustituirAhora);
+      const anadidas = onPropuesta(respuesta.partidas, anadirAhora);
       setResultado({
         anadidas,
-        sustituidas: sustituirAhora,
+        sustituidas,
         sinHueco: respuesta.partidas.length - anadidas,
         descartadas: respuesta.descartadas,
         supuestos: respuesta.supuestos,
+        repetida: respuesta.repetida,
         quedan: respuesta.quedan,
       });
-      setSustituir(false);
+      setAnadir(false);
     });
   }
 
@@ -146,7 +158,7 @@ export function MontarConIa({ hayPartidas, lleno, onPropuesta }: MontarConIaProp
 
   const fase = FASES[Math.floor(segundos / 5) % FASES.length];
   const largo = texto.length;
-  const sinHueco = lleno && !sustituir;
+  const sinHueco = lleno && anadir;
 
   return (
     <section
@@ -162,8 +174,9 @@ export function MontarConIa({ hayPartidas, lleno, onPropuesta }: MontarConIaProp
             Montar con IA
           </h3>
           <p className="text-sm text-stone-600">
-            Describe la obra y la IA propone las partidas con los materiales y precios de tu almacén. Se añaden abajo
-            para que las revises; no se guarda nada hasta que pulses «Guardar».
+            Describe la obra y la IA propone las partidas con los materiales y precios de tu almacén. Sustituyen a las
+            de abajo (o van detrás, si lo marcas) para que las revises; no se guarda nada hasta que pulses «Guardar».
+            Con el mismo almacén, la misma descripción da siempre las mismas partidas.
           </p>
         </div>
       </div>
@@ -213,18 +226,18 @@ export function MontarConIa({ hayPartidas, lleno, onPropuesta }: MontarConIaProp
       <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         {hayPartidas ? (
           <label
-            htmlFor={ids.sustituir}
+            htmlFor={ids.anadir}
             className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-stone-700 sm:min-h-0"
           >
             <input
-              id={ids.sustituir}
+              id={ids.anadir}
               type="checkbox"
-              checked={sustituir}
+              checked={anadir}
               disabled={pending}
-              onChange={(e) => setSustituir(e.target.checked)}
+              onChange={(e) => setAnadir(e.target.checked)}
               className="size-4 accent-amber-600"
             />
-            Sustituir las partidas actuales
+            Añadir detrás de las partidas actuales
           </label>
         ) : (
           <span className="hidden sm:block" />
@@ -255,8 +268,8 @@ export function MontarConIa({ hayPartidas, lleno, onPropuesta }: MontarConIaProp
 
       {sinHueco && (
         <p id={ids.lleno} className="mt-3 rounded-lg border border-stone-200 bg-white px-4 py-3 text-sm text-stone-700">
-          El presupuesto ya tiene {LIMITES_PRESUPUESTO.partidas} partidas, el máximo. Quita alguna o marca «Sustituir las
-          partidas actuales» para pedir una propuesta.
+          El presupuesto ya tiene {LIMITES_PRESUPUESTO.partidas} partidas, el máximo. Quita alguna o desmarca «Añadir
+          detrás de las partidas actuales» para que la propuesta las sustituya.
         </p>
       )}
 

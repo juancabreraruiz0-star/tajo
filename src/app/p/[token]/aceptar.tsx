@@ -89,7 +89,7 @@ export function Aceptar({ token, resumen, empresa }: AceptarProps) {
             type="submit"
             disabled={pending}
             aria-disabled={pending}
-            className="inline-flex h-14 w-full shrink-0 items-center justify-center gap-2.5 rounded-xl bg-amber-400 px-8 text-base font-semibold text-stone-950 shadow-[inset_0_1px_0_rgb(255_255_255/0.4),0_8px_20px_-6px_rgb(245_158_11/0.55)] transition-[background-color,box-shadow,transform] duration-150 select-none hover:bg-amber-300 active:translate-y-px focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-amber-300 disabled:pointer-events-none disabled:opacity-70 sm:w-auto"
+            className="inline-flex h-14 w-full shrink-0 items-center justify-center gap-2.5 rounded-xl bg-amber-400 px-8 text-base font-semibold text-stone-950 shadow-[inset_0_1px_0_rgb(255_255_255/0.4),0_8px_20px_-6px_rgb(236_147_28/0.55)] transition-[background-color,box-shadow,transform] duration-150 select-none hover:bg-amber-300 active:translate-y-px focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-amber-300 disabled:pointer-events-none disabled:opacity-70 sm:w-auto"
           >
             <CheckIcon className="size-5" strokeWidth={2.5} />
             {pending ? "Aceptando…" : "Aceptar presupuesto"}

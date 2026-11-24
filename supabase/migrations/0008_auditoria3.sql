@@ -1,5 +1,6 @@
 -- Tajo · 0008_auditoria3.sql — correcciones de la tercera auditoría externa en la base de datos (D13, tarea T18).
--- Orden de ejecución: 0001 → 0002 → 0003 → 0004 → 0005 → 0006 → 0007 → este fichero → seed.sql (el seed lo necesita).
+-- Orden de ejecución: 0001 → 0002 → 0003 → 0004 → 0005 → 0006 → 0007 → este fichero → 0009_ia_cache.sql → seed.sql
+-- (el seed necesita este fichero y la 0009).
 -- Cómo se ejecuta: Supabase → SQL Editor (rol postgres) → pegar este fichero entero → Run. Va entre begin y commit: si
 -- algo falla, no se aplica nada y los datos quedan como estaban. Se aplica sobre una base con datos y no pierde
 -- ninguno (la IP y el navegador de las aceptaciones se copian a su tabla antes de quitar las columnas). Se puede volver

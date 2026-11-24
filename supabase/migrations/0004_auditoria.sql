@@ -1,6 +1,6 @@
 -- Tajo · 0004_auditoria.sql — correcciones de la auditoría externa en la base de datos (D9, tarea T11a).
 -- Orden de ejecución: 0001_esquema.sql → 0002_reglas.sql → 0003_guardar_presupuesto.sql → este fichero → seed.sql.
--- Orden completo: 0001 → 0002 → 0003 → 0004 → 0005 → 0006 → 0007 → 0008_auditoria3.sql → seed.sql.
+-- Orden completo: 0001 → 0002 → 0003 → 0004 → 0005 → 0006 → 0007 → 0008 → 0009_ia_cache.sql → seed.sql.
 -- Cómo se ejecuta: Supabase → SQL Editor (rol postgres) → pegar este fichero entero → Run. El SQL Editor lo ejecuta en
 -- una sola transacción: si algo falla, no se aplica nada y los datos quedan como estaban.
 -- Se aplica sobre una base ya migrada y con datos: no borra nada. Después hay que volver a ejecutar seed.sql.

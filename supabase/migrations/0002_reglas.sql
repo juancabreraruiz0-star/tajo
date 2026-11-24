@@ -1,7 +1,7 @@
 -- Tajo · 0002_reglas.sql — reglas de negocio de presupuestos y partidas también en la base de datos (R9, R12, R13).
 -- Orden de ejecución: 1) migrations/0001_esquema.sql; 2) este fichero; 3) migrations/0003_guardar_presupuesto.sql;
 -- 4) seed.sql.
--- Orden completo: 0001 → 0002 → 0003 → 0004 → 0005 → 0006 → 0007 → 0008_auditoria3.sql → seed.sql.
+-- Orden completo: 0001 → 0002 → 0003 → 0004 → 0005 → 0006 → 0007 → 0008 → 0009_ia_cache.sql → seed.sql.
 -- Cómo se ejecuta: Supabase → SQL Editor → pegar este fichero entero → Run.
 -- Es idempotente: solo usa create or replace / drop ... if exists, así que se puede volver a ejecutar; si ya estaba
 -- aplicado 0003, hay que volver a ejecutarlo después (este fichero deja presupuestos_reglas() como antes de 0003).

@@ -1,6 +1,6 @@
 -- Tajo · 0005_uso_ia.sql — cuota diaria de «Montar con IA» por empresa (D10, tarea T12).
 -- Orden de ejecución: 0001 → 0002 → 0003 → 0004 → este fichero (seed.sql no depende de él).
--- Orden completo: 0001 → 0002 → 0003 → 0004 → 0005 → 0006 → 0007 → 0008_auditoria3.sql → seed.sql.
+-- Orden completo: 0001 → 0002 → 0003 → 0004 → 0005 → 0006 → 0007 → 0008 → 0009_ia_cache.sql → seed.sql.
 -- Cómo se ejecuta: Supabase → SQL Editor (rol postgres) → pegar este fichero entero → Run. Se ejecuta en una sola
 -- transacción: si algo falla, no se aplica nada. Se puede volver a ejecutar: no borra los usos ya contados.
 --

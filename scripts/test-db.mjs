@@ -1,7 +1,7 @@
 // Tajo · tests de la base de datos contra el Supabase real (npm run test:db). No forman parte de `npm test`.
 //
 // Entra como anónimo, como obra (empleado) y como gerencia (admin) y comprueba qué puede y qué no puede hacer cada
-// uno: RLS, triggers y funciones de 0001–0008. Necesita la base migrada hasta 0008 y el seed recién ejecutado.
+// uno: RLS, triggers y funciones de 0001–0009. Necesita la base migrada hasta 0009 y el seed recién ejecutado.
 // Lo mismo, y bastante más, se comprueba sin Supabase ni contraseñas con `npm run test:pglite` (tests/db/).
 //
 // Configuración:
@@ -67,6 +67,7 @@ const TABLAS = [
   "partes",
   "parte_materiales",
   "obras_resumen",
+  "ia_propuestas",
 ];
 
 // ----------------------------------------------------------------------------
@@ -293,6 +294,10 @@ await comprobar("No puede llamar a regenerar_enlace", async () =>
 
 await comprobar("No puede llamar a facturar_presupuesto", async () =>
   falla(await anon.rpc("facturar_presupuesto", { p_presupuesto: randomUUID() })),
+);
+
+await comprobar("No puede guardar una propuesta de IA (guardar_propuesta_ia, 0009)", async () =>
+  falla(await anon.rpc("guardar_propuesta_ia", { p_reserva: randomUUID(), p_clave: "a".repeat(64), p_respuesta: {} })),
 );
 
 // ----------------------------------------------------------------------------
@@ -621,7 +626,7 @@ await comprobar("Lee las facturas con su copia fija y sus partidas, y cuadran", 
   return true;
 });
 
-for (const tabla of ["clientes", "materiales", "presupuestos", "presupuesto_lineas", "presupuestos_con_totales", "facturas", "factura_lineas", "perfiles"]) {
+for (const tabla of ["clientes", "materiales", "presupuestos", "presupuesto_lineas", "presupuestos_con_totales", "facturas", "factura_lineas", "perfiles", "ia_propuestas"]) {
   await comprobar(`No ve nada de la segunda empresa en ${tabla}`, async () =>
     sinFilas(await gerencia.from(tabla).select("*").eq("empresa_id", EMPRESA_AJENA)),
   );
@@ -720,6 +725,32 @@ await comprobar("Cuota de IA por usuario: 15 al día y la 16.ª da TJ003 (se dev
     if (error || data !== true) resultado = `no se ha podido devolver una reserva: ${error ? errorTexto(error) : data}`;
   }
   return resultado;
+});
+
+// Caché de propuestas de IA (0009). Sin gastar cuota: guardar una de verdad gastaría un uso y dejaría una fila que solo
+// borra el seed (eso, y que una reserva no sirva dos veces, lo comprueba test:pglite).
+const PROPUESTA_DE_PRUEBA = {
+  partidas: [{ descripcion: `${PREFIJO} partida`, cantidad: 1, unidad: "", precio_euros: 1, material_id: null }],
+  supuestos: [],
+};
+
+await comprobar("No escribe en ia_propuestas directamente (0009)", async () =>
+  falla(
+    await obra
+      .from("ia_propuestas")
+      .insert({ empresa_id: EMPRESA_DEMO, clave: "a".repeat(64), respuesta: PROPUESTA_DE_PRUEBA, reserva: randomUUID() })
+      .select("clave"),
+  ),
+);
+
+await comprobar("No guarda una propuesta de IA sin una reserva suya y sin usar (TJ005, 0009)", async () => {
+  const { error } = await obra.rpc("guardar_propuesta_ia", {
+    p_reserva: randomUUID(),
+    p_clave: "a".repeat(64),
+    p_respuesta: PROPUESTA_DE_PRUEBA,
+  });
+  if (!error) return "ha guardado la propuesta";
+  return error.code === "TJ005" ? true : `ha fallado con otro error: ${errorTexto(error)}`;
 });
 
 // ----------------------------------------------------------------------------

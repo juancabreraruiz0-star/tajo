@@ -54,6 +54,12 @@ export const ESQUEMA_IA = {
   additionalProperties: false,
 } as const;
 
+/**
+ * Versión de la petición a la IA (D14): modelo, instrucciones y esquema. Entra en la clave de la caché de propuestas:
+ * si cambia cualquiera de los tres, la misma descripción se vuelve a pedir en vez de servir la propuesta guardada.
+ */
+export const VERSION_PETICION_IA = JSON.stringify([MODELO_IA, INSTRUCCIONES_IA, ESQUEMA_IA]);
+
 /** Precio para mostrar a la IA (dato, no cálculo): 2475 → 24.75. */
 function precioEuros(cents: number): number {
   return Number((cents / 100).toFixed(2));

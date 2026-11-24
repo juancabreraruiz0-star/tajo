@@ -1,7 +1,9 @@
 // Migraciones y seed: 0007 se aplica sobre una base con datos (como la real: 0001 → 0006 y actividad de la app) sin
 // perder nada, aborta con la lista si hay datos que no cumplirían sus reglas, y 0006, 0007 y el seed se pueden volver
 // a ejecutar. Después, 0008 sobre esa misma base (ya con 0007 y más actividad): mueve la IP y el navegador a su tabla,
-// rellena el nombre de quien envió, no pierde nada y se puede volver a ejecutar. El seed va al final (necesita 0008).
+// rellena el nombre de quien envió, no pierde nada y se puede volver a ejecutar. Después, 0009 (caché de propuestas de
+// IA): no toca nada de lo que había y se puede volver a ejecutar sin perder las propuestas. El seed va al final
+// (necesita 0008 y 0009).
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
@@ -23,6 +25,7 @@ import {
 
 const HASTA_0006 = migraciones().filter((m) => m < "0007");
 const HASTA_0007 = migraciones().filter((m) => m < "0008");
+const HASTA_0008 = migraciones().filter((m) => m < "0009");
 
 let base: Base;
 /** Presupuestos creados como lo haría la app antes de 0007. */
@@ -267,7 +270,67 @@ describe("0008 sobre una base 0001 → 0007 con datos", () => {
   });
 });
 
-describe("seed sobre 0001 → 0008", () => {
+describe("0009 sobre una base 0001 → 0008 con datos", () => {
+  it("se aplica sin perder ni cambiar nada y deja la tabla vacía, con RLS y la función", async () => {
+    const antes = await foto(base);
+    await base.exec(migracion("0009_ia_cache.sql"));
+    expect(await foto(base)).toEqual(antes);
+    expect(
+      await base.one(`
+        select (select count(*)::int from ia_propuestas) as n,
+               (select relrowsecurity from pg_class where oid = 'public.ia_propuestas'::regclass) as rls,
+               to_regprocedure('public.guardar_propuesta_ia(uuid, text, jsonb, boolean)') is not null as f`),
+    ).toEqual({ n: 0, rls: true, f: true });
+  });
+
+  it("0009 se puede volver a ejecutar sin perder las propuestas guardadas", async () => {
+    const r = await base.como(
+      "postgres",
+      async (tx) => {
+        await ser(tx, OBRA);
+        const { reserva } = await unaEn(tx, "select * from consumir_uso_ia()");
+        await en(tx, "select guardar_propuesta_ia($1, $2, $3::jsonb)", [
+          reserva,
+          "c".repeat(64),
+          JSON.stringify({ partidas: [{ descripcion: "Partida", cantidad: 1, unidad: "", precio_euros: 1, material_id: null }], supuestos: [] }),
+        ]);
+      },
+      { guardar: true },
+    );
+    valor(r);
+    const antes = { foto: await foto(base), propuestas: await base.q("select * from ia_propuestas order by clave") };
+    await base.exec(migracion("0009_ia_cache.sql"));
+    expect({ foto: await foto(base), propuestas: await base.q("select * from ia_propuestas order by clave") }).toEqual(antes);
+    expect(antes.propuestas).toHaveLength(1);
+    expect(await base.one("select count(*)::int as n from pg_policies where tablename = 'ia_propuestas'")).toEqual({ n: 1 });
+  });
+
+  it("sin 0008 no se aplica y lo dice; si falla, no deja nada (va en una transacción)", async () => {
+    const otra = await baseVacia();
+    try {
+      for (const m of HASTA_0007) await otra.exec(migracion(m));
+      await expect(otra.exec(migracion("0009_ia_cache.sql"))).rejects.toThrow(/Falta la 0008/);
+      await otra.exec("rollback");
+      await otra.exec(migracion("0008_auditoria3.sql"));
+      // Una comprobación final que no se cumple: una política de más en la tabla.
+      await otra.exec(`
+        create table public.ia_propuestas (empresa_id uuid not null, clave text not null, respuesta jsonb not null,
+          perfil_id uuid, reserva uuid not null, created_at timestamptz not null default now(), primary key (empresa_id, clave));
+        create policy sobra on public.ia_propuestas for select using (true);`);
+      await expect(otra.exec(migracion("0009_ia_cache.sql"))).rejects.toThrow(/solo la política de lectura/);
+      await otra.exec("rollback");
+      expect(
+        await otra.one(`
+          select to_regprocedure('public.guardar_propuesta_ia(uuid, text, jsonb, boolean)') as f,
+                 (select relrowsecurity from pg_class where oid = 'public.ia_propuestas'::regclass) as rls`),
+      ).toEqual({ f: null, rls: false });
+    } finally {
+      await otra.cerrar();
+    }
+  });
+});
+
+describe("seed sobre 0001 → 0009", () => {
   async function fotoSeed() {
     return {
       presupuestos: await base.q(
@@ -318,6 +381,17 @@ describe("seed sobre 0001 → 0008", () => {
       for (const m of HASTA_0007) await otra.exec(migracion(m));
       await crearUsuariosDemo(otra);
       await expect(otra.exec(seed())).rejects.toThrow(/Falta aplicar migrations\/0008_auditoria3\.sql/);
+    } finally {
+      await otra.cerrar();
+    }
+  });
+
+  it("sin 0009 el seed se niega a ejecutarse y lo dice", async () => {
+    const otra = await baseVacia();
+    try {
+      for (const m of HASTA_0008) await otra.exec(migracion(m));
+      await crearUsuariosDemo(otra);
+      await expect(otra.exec(seed())).rejects.toThrow(/Falta aplicar migrations\/0009_ia_cache\.sql/);
     } finally {
       await otra.cerrar();
     }

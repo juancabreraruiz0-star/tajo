@@ -40,16 +40,17 @@ Recorrido sugerido (3 minutos; el panel trae la misma guía, «Prueba Tajo en 3 
 
 En el formulario de presupuesto (alta y edición en borrador) está el panel **«Montar con IA»**. Escribes la obra como se la contarías a un compañero, por ejemplo «reforma de baño de 6 m²: quitar bañera, plato de ducha de 120, alicatado hasta el techo y mampara», y la IA propone las partidas: demoliciones, fontanería, alicatado, mano de obra… con cantidades y unidades. Cuando una partida encaja con un material del almacén, la vincula y usa su precio; la mano de obra y lo que no está en el almacén van sin material, con precio de mercado. A la IA se le pasan como mucho 200 materiales (por orden alfabético): en un almacén más grande, los que queden fuera no se pueden vincular.
 
-- **Las partidas se añaden al formulario, no se guardan.** Aparecen resaltadas un momento debajo de las que ya hubiera (o las sustituyen, si lo marcas) y se editan o se quitan como cualquier otra. Lo que la IA ha tenido que suponer (alturas, calidades…) se muestra en un aviso «La IA ha supuesto:».
+- **Las partidas se ponen en el formulario, no se guardan.** Sustituyen a las que hubiera (pedir otra propuesta no las suma: probarla tres veces no triplica el presupuesto); si quieres conservarlas, marca «Añadir detrás de las partidas actuales». Aparecen resaltadas un momento y se editan o se quitan como cualquier otra. Lo que la IA ha tenido que suponer (alturas, calidades…) se muestra en un aviso «La IA ha supuesto:».
+- **Misma descripción, mismo presupuesto.** La IA no es determinista, así que la aplicación guarda cada propuesta ya validada con una huella de la empresa, la descripción (sin distinguir mayúsculas, espacios, saltos de línea ni la puntuación del final; los números y las unidades sí cuentan) y el almacén que se le pasa a la IA (materiales, unidades y precios). Si se vuelve a pedir lo mismo, devuelve exactamente las mismas partidas, en el mismo orden y con los mismos supuestos, al momento, sin llamar a la IA y sin gastar cuota; el panel lo indica («Misma descripción que una propuesta anterior: mismas partidas»). Si cambia el almacén (un precio, una unidad, un material nuevo o borrado), se vuelve a pedir. Las propuestas guardadas están en la tabla `ia_propuestas` (migración `0009`): cada empresa lee solo las suyas y solo se escriben gastando un uso de la cuota (ver D14 en `docs/DECISIONES.md`).
 - **La respuesta se valida antes de tocar el formulario.** Es un dato no fiable, así que una función del dominio con tests (`src/lib/domain/sugerencias.ts`) la revisa: solo se vinculan materiales del almacén de tu empresa y medidos en su misma unidad (si no, la partida queda sin vincular, con el precio y la unidad de la IA); una partida vinculada lleva siempre el precio del almacén, diga lo que diga la IA; cantidades y precios dentro de los mismos límites que el formulario y redondeados al céntimo; como mucho 30 partidas y textos recortados y sin caracteres de control ni invisibles. Lo que no pasa se descarta y se avisa de cuántas partidas han sido.
 - **Es opcional.** Funciona con la API de Anthropic (modelo Claude Opus 5.5, salida estructurada con un esquema JSON). Si no hay `ANTHROPIC_API_KEY` en el servidor, el panel no aparece y el resto de la aplicación funciona igual. La clave solo vive en el servidor: la llamada se hace desde una Server Action y nunca llega al navegador.
-- **Cuota de 40 propuestas al día por empresa y 15 por usuario** (día de Madrid), contada en la base de datos antes de llamar a la IA (`consumir_uso_ia()`, migraciones `0005` y `0007`), para que una clave de demo no se pueda gastar sin control ni un solo usuario deje sin IA al resto. Al pasarla, la aplicación lo dice y vuelve a funcionar al día siguiente. Si la IA no llega a atender la petición (límite de peticiones, clave mal configurada, servicio caído o sin conexión), el uso se devuelve; si responde, aunque sea para rechazarla o con una respuesta que no vale, cuenta, y también si tarda más de 55 segundos, porque puede haber seguido trabajando y cobrándose. La devolución exige una reserva que solo conoce el servidor, así que nadie puede devolverse usos a mano para tenerlos ilimitados.
+- **Cuota de 40 propuestas al día por empresa y 15 por usuario** (día de Madrid), contada en la base de datos antes de llamar a la IA (`consumir_uso_ia()`, migraciones `0005` y `0007`; una descripción repetida no cuenta), para que una clave de demo no se pueda gastar sin control ni un solo usuario deje sin IA al resto. Al pasarla, la aplicación lo dice y vuelve a funcionar al día siguiente. Si la IA no llega a atender la petición (límite de peticiones, clave mal configurada, servicio caído o sin conexión), el uso se devuelve; si responde, aunque sea para rechazarla o con una respuesta que no vale, cuenta, y también si tarda más de 55 segundos, porque puede haber seguido trabajando y cobrándose. La devolución exige una reserva que solo conoce el servidor, así que nadie puede devolverse usos a mano para tenerlos ilimitados.
 - **Coste por propuesta** (Claude Opus 5.5: 4 $ por millón de tokens de entrada y 20 $ por millón de salida). Lo normal es bastante menos de lo que sigue: unos pocos miles de tokens de entrada y de salida, del orden de 5 a 15 céntimos de dólar. El peor caso está acotado por la petición: con 200 materiales la entrada se estima en unos 10.000 tokens (no está medido; cada material lleva su identificador), unos 0,04 $, y la salida, contando el razonamiento, tiene un tope de 16.000 tokens (0,32 $). En total, **como mucho unos 0,36 $ por propuesta**, y con la cuota, unos 15 $ al día por empresa en el peor caso. Si la IA rechaza la petición y responde el modelo de respaldo, esa propuesta puede costar algo más.
 - Tarda entre 20 y 60 segundos; mientras tanto el panel muestra lo que está haciendo y el tiempo que lleva.
 
 Para activarla:
 
-1. Ten la base migrada entera, hasta la `0008` (la cuota está en la `0005` y la de cada usuario en la `0007`; ver «Ponerlo en marcha»).
+1. Ten la base migrada entera, hasta la `0009` (la cuota está en la `0005`, la de cada usuario en la `0007` y las propuestas guardadas en la `0009`; ver «Ponerlo en marcha»).
 2. Añade `ANTHROPIC_API_KEY` en `.env.local` (y en Vercel, en las variables de entorno del proyecto) y vuelve a arrancar o desplegar.
 
 ## Cómo está hecho: equipo de 3 agentes
@@ -141,7 +142,7 @@ Decisiones clave:
 ## Calidad
 
 - `npm test`: tests de la lógica de dominio y de la regla de rutas públicas del middleware (Vitest).
-- `npm run test:pglite`: tests de la base de datos en PGlite (Postgres en local, sin Supabase ni contraseñas). Aplican `0001` → `0008` y el seed y comprueban RLS, roles, triggers y funciones como anónimo, empleado, gerencia y otra empresa.
+- `npm run test:pglite`: tests de la base de datos en PGlite (Postgres en local, sin Supabase ni contraseñas). Aplican `0001` → `0009` y el seed y comprueban RLS, roles, triggers y funciones como anónimo, empleado, gerencia y otra empresa.
 - **CI** en GitHub Actions: en cada push y pull request a `main` ejecuta `npm run check`, que ya incluye `test:pglite`.
 
 ```bash
@@ -153,7 +154,7 @@ npm run build        # build de producción (lo que despliega Vercel)
 npm run check        # lint, typecheck, test, test:pglite y build, en orden
 ```
 
-Cifras: `npm test`, 679 tests en 26 ficheros; `npm run test:pglite`: 124 tests en 8 ficheros.
+Cifras: `npm test`, 710 tests en 28 ficheros; `npm run test:pglite`: 138 tests en 9 ficheros.
 
 **Tests de la base de datos** (`npm run test:db`): entran en el Supabase real como anónimo, como obra (empleado) y como gerencia (admin), y comprueban qué puede y qué no puede hacer cada uno. Por ejemplo: que el anónimo no lee ninguna tabla ni puede registrarse, que nadie ve los datos de otra empresa, que obra no puede dar por aceptado un presupuesto ni regenerar el enlace, que la aceptación por enlace queda con canal `enlace`, que la vista de totales cuadra con las partidas y que regenerar el enlace deja inservible el anterior. No forman parte de `npm test` porque necesitan las contraseñas, que solo se pasan por variable de entorno:
 
@@ -161,7 +162,7 @@ Cifras: `npm test`, 679 tests en 26 ficheros; `npm run test:pglite`: 124 tests e
 TAJO_PASS_GERENCIA=... TAJO_PASS_OBRA=... npm run test:db
 ```
 
-Necesitan la base migrada entera (hasta `0008`) y el seed recién ejecutado. Crean datos con el prefijo `[test]` y los borran al final, pero consumen números de presupuesto: no los ejecutes contra una base con datos reales.
+Necesitan la base migrada entera (hasta `0009`) y el seed recién ejecutado. Crean datos con el prefijo `[test]` y los borran al final, pero consumen números de presupuesto: no los ejecutes contra una base con datos reales.
 
 ## Ponerlo en marcha
 
@@ -178,6 +179,7 @@ Hace falta Node.js 22.12 o superior (lo pide Vitest 5 para los tests) y una cuen
    6. `supabase/migrations/0006_obras.sql` (obras, partes de trabajo y margen; el seed la necesita)
    7. `supabase/migrations/0007_auditoria2.sql` (correcciones de la segunda auditoría: evidencia de la aceptación, semáforo, NIF, partes y cuota por usuario)
    8. `supabase/migrations/0008_auditoria3.sql` (correcciones de la tercera auditoría: validez desde el envío, sin envíos de 0 €, nombre de quien envió fijo, IP y navegador solo para gerencia)
+   9. `supabase/migrations/0009_ia_cache.sql` (propuestas de IA guardadas: misma descripción, mismo presupuesto; el seed la necesita)
 4. Crea los dos usuarios en Authentication → Add user, marcando *Auto Confirm User* (el perfil solo se crea con el email confirmado): `gerencia@reformaslevante.es` y `obra@reformaslevante.es`, con la contraseña que quieras.
 5. En el SQL Editor, ejecuta `supabase/seed.sql` entero de una vez: invita a los dos usuarios, les crea el perfil (gerencia como admin) y carga los datos de demo.
 6. Copia `.env.example` a `.env.local` y rellena `NEXT_PUBLIC_SUPABASE_URL` y `NEXT_PUBLIC_SUPABASE_ANON_KEY` con la URL y la clave anónima del proyecto (están en los ajustes de API de Supabase).
@@ -189,7 +191,7 @@ Hace falta Node.js 22.12 o superior (lo pide Vitest 5 para los tests) y una cuen
 
    La aplicación queda en `http://localhost:3000`.
 
-No vuelvas a ejecutar `0001`–`0003` sobre una base que ya tiene la `0004`: redefinen funciones que la `0004` cambia. El orden completo es `0001` → `0002` → `0003` → `0004` → `0005` → `0006` → `0007` → `0008` → `seed.sql`. Sobre una base que ya tenía hasta la `0007` (como la de la demo), basta con ejecutar la `0008`, desplegar justo después la versión de la aplicación que la usa y volver a ejecutar `seed.sql` (cambia los contactos de demo por los ficticios de D13).
+No vuelvas a ejecutar `0001`–`0003` sobre una base que ya tiene la `0004`: redefinen funciones que la `0004` cambia. El orden completo es `0001` → `0002` → `0003` → `0004` → `0005` → `0006` → `0007` → `0008` → `0009` → `seed.sql`. Sobre una base que ya tenía hasta la `0007`, basta con ejecutar la `0008` y la `0009`, desplegar justo después la versión de la aplicación que la usa y volver a ejecutar `seed.sql` (cambia los contactos de demo por los ficticios de D13). Sobre una base que ya tiene hasta la `0008` (como la de la demo), basta con ejecutar la `0009`: solo añade una tabla y una función, no toca datos y se puede aplicar antes o después de desplegar (sin ella, la aplicación nueva funciona como antes, sin guardar propuestas). No hace falta volver a ejecutar el seed.
 
 **Dar de alta a alguien más**: primero la invitación en el SQL Editor y después el usuario en Authentication → Add user, con *Auto Confirm User* marcado. Al crearse el usuario, su perfil sale de la invitación.
 

@@ -6,9 +6,53 @@
 }
 
 @theme {
-  /* Sombras suaves y cálidas (stone-900) en lugar de negro puro. */
-  --shadow-tarjeta: 0 1px 2px 0 rgb(28 25 23 / 0.05), 0 1px 3px 0 rgb(28 25 23 / 0.04);
-  --shadow-elevada: 0 2px 4px -1px rgb(28 25 23 / 0.06), 0 12px 28px -8px rgb(28 25 23 / 0.16);
+  /*
+   * Colores de la marca (logo de Tajo): naranja #EC931C y azul marino #071B2C. Se redefinen las escalas que usa toda
+   * la app, así cada clase (amber-500, stone-900, slate-900…) ya sale con la marca sin tocar los componentes:
+   *  - amber: el naranja del tejado del logo (500 = #EC931C).
+   *  - stone: grises fríos que terminan en el azul marino del logo (950 = #071B2C): textos, bordes y fondos.
+   *  - slate: el azul marino de la barra lateral y del login (900 = #071B2C).
+   */
+  --color-amber-50: #fef8ee;
+  --color-amber-100: #fdefd6;
+  --color-amber-200: #fadbab;
+  --color-amber-300: #f6c275;
+  --color-amber-400: #f1a843;
+  --color-amber-500: #ec931c;
+  --color-amber-600: #d17712;
+  --color-amber-700: #ad5a12;
+  --color-amber-800: #8b4716;
+  --color-amber-900: #723c16;
+  --color-amber-950: #3e1d08;
+
+  --color-stone-50: #f7f9fb;
+  --color-stone-100: #eef2f5;
+  --color-stone-200: #e1e7ed;
+  --color-stone-300: #cbd4dd;
+  --color-stone-400: #94a3b3;
+  /* 500: texto secundario; AA (≥ 4,5:1) sobre blanco, stone-50 y stone-100 (fondo de la página pública). */
+  --color-stone-500: #5d6c80;
+  --color-stone-600: #4a596b;
+  --color-stone-700: #364556;
+  --color-stone-800: #22303f;
+  --color-stone-900: #12202f;
+  --color-stone-950: #071b2c;
+
+  --color-slate-50: #f2f6fa;
+  --color-slate-100: #e3eaf2;
+  --color-slate-200: #c9d6e3;
+  --color-slate-300: #a3b7cb;
+  --color-slate-400: #7d93aa;
+  --color-slate-500: #56718e;
+  --color-slate-600: #435a74;
+  --color-slate-700: #2c4058;
+  --color-slate-800: #142b42;
+  --color-slate-900: #071b2c;
+  --color-slate-950: #04111d;
+
+  /* Sombras suaves teñidas del azul marino de la marca en lugar de negro puro. */
+  --shadow-tarjeta: 0 1px 2px 0 rgb(7 27 44 / 0.05), 0 1px 3px 0 rgb(7 27 44 / 0.04);
+  --shadow-elevada: 0 2px 4px -1px rgb(7 27 44 / 0.06), 0 12px 28px -8px rgb(7 27 44 / 0.16);
   --ease-suave: cubic-bezier(0.22, 1, 0.36, 1);
 
   --animate-entrada: entrada 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
@@ -46,7 +90,7 @@
   }
 }
 
-/* Franja de obra (ámbar y casi negro en diagonal): la firma de Tajo. Poca y en sitios contados. */
+/* Franja de obra (naranja y azul marino de la marca en diagonal): la firma de Tajo. Poca y en sitios contados. */
 @utility franja-obra {
   background-image: repeating-linear-gradient(
     -45deg,
@@ -58,8 +102,8 @@
 /* Cuadrícula de plano (papel milimetrado) para fondos. El color de las líneas se cambia con --plano-linea. */
 @utility fondo-plano {
   background-image:
-    linear-gradient(var(--plano-linea, rgb(120 113 108 / 0.08)) 1px, transparent 1px),
-    linear-gradient(90deg, var(--plano-linea, rgb(120 113 108 / 0.08)) 1px, transparent 1px);
+    linear-gradient(var(--plano-linea, rgb(93 108 128 / 0.08)) 1px, transparent 1px),
+    linear-gradient(90deg, var(--plano-linea, rgb(93 108 128 / 0.08)) 1px, transparent 1px);
   background-size: 24px 24px;
   background-position: -1px -1px;
 }

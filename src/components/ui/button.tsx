@@ -8,7 +8,7 @@ export type ButtonSize = "sm" | "md";
 const VARIANTS: Record<ButtonVariant, string> = {
   // Ámbar de obra con un brillo interior arriba y un filo más oscuro abajo: se lee como pieza, no como plantilla.
   primary:
-    "bg-amber-500 text-stone-950 shadow-[inset_0_1px_0_rgb(255_255_255/0.35),0_1px_2px_rgb(120_53_15/0.25)] ring-1 ring-amber-600/40 ring-inset hover:bg-amber-400 active:bg-amber-500",
+    "bg-amber-500 text-stone-950 shadow-[inset_0_1px_0_rgb(255_255_255/0.35),0_1px_2px_rgb(139_71_22/0.25)] ring-1 ring-amber-600/40 ring-inset hover:bg-amber-400 active:bg-amber-500",
   secondary:
     "bg-white text-stone-800 shadow-tarjeta ring-1 ring-stone-300 ring-inset hover:bg-stone-50 hover:ring-stone-400 active:bg-stone-100",
   danger:

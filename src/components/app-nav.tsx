@@ -66,7 +66,7 @@ export function BottomNav({ items }: { items: readonly NavItem[] }) {
   return (
     <nav
       aria-label="Menú principal"
-      className="fixed inset-x-0 bottom-0 z-30 border-t border-stone-200/80 bg-white/90 pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_16px_-8px_rgb(28_25_23/0.12)] backdrop-blur-md md:hidden print:hidden"
+      className="fixed inset-x-0 bottom-0 z-30 border-t border-stone-200/80 bg-white/90 pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_16px_-8px_rgb(7_27_44/0.12)] backdrop-blur-md md:hidden print:hidden"
     >
       <ul className="flex">
         {items.map((item) => {

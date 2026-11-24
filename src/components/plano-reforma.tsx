@@ -7,7 +7,7 @@ import { cn } from "./ui/cn";
 export function PlanoReforma({ className }: { className?: string }) {
   const muro = "#cbd5e1"; // slate-300
   const linea = "#94a3b8"; // slate-400
-  const ambar = "#fbbf24"; // amber-400
+  const ambar = "#f1a843"; // amber-400
 
   return (
     <svg
@@ -104,7 +104,7 @@ export function PlanoReforma({ className }: { className?: string }) {
       {/* Rótulo de la estancia */}
       <g>
         <rect x="272" y="104" width="58" height="22" rx="11" fill={ambar} />
-        <text x="301" y="119" textAnchor="middle" fill="#1c1917" fontSize="11" fontWeight="700">
+        <text x="301" y="119" textAnchor="middle" fill="#12202f" fontSize="11" fontWeight="700">
           Baño
         </text>
       </g>

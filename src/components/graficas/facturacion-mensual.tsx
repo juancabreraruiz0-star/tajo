@@ -47,7 +47,7 @@ export function FacturacionMensual({ id, serie }: FacturacionMensualProps) {
               x2="100%"
               y1={pct(linea * 100)}
               y2={pct(linea * 100)}
-              stroke="#f5f5f4"
+              stroke="#eef2f5"
               strokeWidth="1"
             />
           ))}
@@ -83,12 +83,12 @@ export function FacturacionMensual({ id, serie }: FacturacionMensualProps) {
               x2="100%"
               y1={pct((1 - proporcion(media, maximo)) * 100)}
               y2={pct((1 - proporcion(media, maximo)) * 100)}
-              stroke="#78716c"
+              stroke="#5d6c80"
               strokeWidth="1"
               strokeDasharray="4 4"
             />
           )}
-          <line x1="0" x2="100%" y1="100%" y2="100%" stroke="#d6d3d1" strokeWidth="1" />
+          <line x1="0" x2="100%" y1="100%" y2="100%" stroke="#cbd4dd" strokeWidth="1" />
           {serie.map((mes, i) => (
             <text
               key={mes.desde}

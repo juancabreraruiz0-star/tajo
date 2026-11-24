@@ -3,7 +3,7 @@
 --   1) Aplicar, en este orden, en el SQL Editor (rol postgres): migrations/0001_esquema.sql →
 --      migrations/0002_reglas.sql → migrations/0003_guardar_presupuesto.sql → migrations/0004_auditoria.sql →
 --      migrations/0005_uso_ia.sql → migrations/0006_obras.sql → migrations/0007_auditoria2.sql →
---      migrations/0008_auditoria3.sql.
+--      migrations/0008_auditoria3.sql → migrations/0009_ia_cache.sql.
 --   2) Crear en Authentication → Add user a gerencia@reformaslevante.es y obra@reformaslevante.es (si no existen).
 --   3) SQL Editor → pegar este fichero entero → Run (el SQL Editor lo ejecuta todo en una sola transacción).
 -- Es reejecutable: borra antes los datos de demo de las dos empresas (también obras y partes) y reinicia su
@@ -34,6 +34,9 @@ begin
   end if;
   if to_regclass('public.presupuesto_aceptaciones') is null then
     raise exception 'Falta aplicar migrations/0008_auditoria3.sql antes del seed.';
+  end if;
+  if to_regclass('public.ia_propuestas') is null then
+    raise exception 'Falta aplicar migrations/0009_ia_cache.sql antes del seed.';
   end if;
 end;
 $$;
@@ -142,6 +145,9 @@ delete from public.partes
 delete from public.obras
  where empresa_id in ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002');
 delete from public.facturas
+ where empresa_id in ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002');
+-- Propuestas de IA guardadas (0009): sus claves dependen del almacén, que el seed vuelve a crear.
+delete from public.ia_propuestas
  where empresa_id in ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002');
 delete from public.presupuesto_aceptaciones
  where empresa_id in ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002');

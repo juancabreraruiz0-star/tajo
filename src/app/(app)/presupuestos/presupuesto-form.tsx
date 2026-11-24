@@ -10,6 +10,7 @@ import { controlClasses, controlState } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { savePresupuesto, type PresupuestoFormState } from "@/lib/actions/presupuestos";
+import { combinarPropuesta } from "@/lib/domain/cache-ia";
 import { centsToEurosInput, formatEuros } from "@/lib/domain/money";
 import {
   draftLineCents,
@@ -150,16 +151,18 @@ export function PresupuestoForm({ id, clientes, materiales, initial, cancelHref,
   }
 
   /**
-   * Partidas de «Montar con IA»: se añaden detrás de las que hay (quitando las filas vacías) o las sustituyen.
-   * Solo hasta el máximo de partidas del presupuesto. Devuelve cuántas se han metido.
+   * Partidas de «Montar con IA» (D14): por defecto sustituyen a las que hay; con `anadir`, van detrás (quitando las
+   * filas vacías). Solo hasta el máximo de partidas del presupuesto. Devuelve cuántas se han metido.
    */
-  function anadirPropuesta(partidas: PartidaRaw[], sustituir: boolean): number {
-    const base = sustituir ? [] : filasActuales.current.filter((f) => !esFilaVacia(f));
-    const nuevas = partidas
-      .slice(0, Math.max(0, LIMITES_PRESUPUESTO.partidas - base.length))
-      .map((p) => ({ ...p, key: siguienteKey.current++ }));
+  function ponerPropuesta(partidas: PartidaRaw[], anadir: boolean): number {
+    const propuesta = partidas.map((p) => ({ ...p, key: siguienteKey.current++ }));
+    const { filas: nuevasFilas, nuevas } = combinarPropuesta(filasActuales.current, propuesta, {
+      anadir,
+      esVacia: esFilaVacia,
+      max: LIMITES_PRESUPUESTO.partidas,
+    });
     if (nuevas.length === 0) return 0;
-    setFilas([...base, ...nuevas]);
+    setFilas(nuevasFilas);
     setResaltadas(new Set(nuevas.map((f) => f.key)));
     return nuevas.length;
   }
@@ -276,7 +279,7 @@ export function PresupuestoForm({ id, clientes, materiales, initial, cancelHref,
           <MontarConIa
             hayPartidas={filas.some((f) => !esFilaVacia(f))}
             lleno={filas.filter((f) => !esFilaVacia(f)).length >= LIMITES_PRESUPUESTO.partidas}
-            onPropuesta={anadirPropuesta}
+            onPropuesta={ponerPropuesta}
           />
         )}
 

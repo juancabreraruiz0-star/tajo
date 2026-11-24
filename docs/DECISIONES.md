@@ -154,3 +154,24 @@ La tercera auditoría (`docs/AUDITORIA-3.md`) no encontró bloqueantes ni fallos
 - **Menor 9 (historial de git con pocos commits):** no se reescribe el historial; el bucle de agentes se sigue en `docs/PLAN.md`.
 - **Dependencias:** vitest 3 → 5 (y `@types/node` 20 → 22, que vitest 5 pide); `npm audit` queda en 0. Las configuraciones de vitest pasan a `.mts`.
 - Migración `0008_auditoria3.sql`, entre `begin` y `commit`. Orden: 0001 → 0008 → seed. Se aplica sobre la base con datos sin perder nada y se puede repetir; después hay que desplegar la app de T18 (la anterior pedía `aceptado_ip`).
+
+## D14 · «Montar con IA»: misma descripción, mismo presupuesto (T19)
+
+La IA no es determinista (y este modelo no tiene `temperature`): dos peticiones con el mismo texto daban 4406,82 € y 4387,46 €. Para quien prueba la app eso es un error grave, así que la garantía la da el código:
+
+- **Caché por huella.** Antes de llamar a la IA, la Server Action calcula una clave determinista (`src/lib/domain/cache-ia.ts`, puro y con tests): SHA-256 de la versión de la petición (modelo, instrucciones y esquema, `VERSION_PETICION_IA`), la empresa, la descripción normalizada y la huella del almacén que se le pasa a la IA.
+  - Descripción normalizada: sin caracteres invisibles, en minúsculas, espacios y saltos de línea seguidos convertidos en uno, sin espacios a los lados y sin la puntuación del final. Los números, las comas decimales y las unidades no se tocan: «6 m²» y «8 m²» son obras distintas.
+  - Huella del almacén: los mismos 200 materiales que recibe la IA (ahora ordenados por nombre y, a igual nombre, por id, para que siempre sean los mismos) con id, nombre, unidad y precio, ordenados por id. Un cambio de precio, unidad o nombre, un alta o una baja cambian la clave y se vuelve a pedir: es lo correcto.
+  - Si cambia el modelo, las instrucciones o el esquema, también cambia la clave.
+- **Flujo.** Sesión → descripción → materiales → clave → ¿propuesta guardada? Si la hay y **vuelve a pasar `validarSugerencia` contra el almacén actual**, se devuelve tal cual (mismas partidas, mismo orden, mismos supuestos) sin llamar a la IA ni consumir cuota. Si no, se consume cuota, se llama a la IA, se valida y se guarda la propuesta **ya validada** (solo las partidas aceptadas, en el formato de la IA: al volver a validarla con el mismo almacén da exactamente lo mismo; lo comprueba un test).
+- **Tabla `ia_propuestas` (0009)**, clave primaria `(empresa_id, clave)`:
+  - RLS: cada usuario lee solo las de su empresa (toda la empresa comparte la caché: la misma descripción da lo mismo a cualquiera). Sin políticas ni permisos de escritura para la API; `anon`, sin ningún permiso.
+  - Solo se escribe con `guardar_propuesta_ia(reserva, clave, respuesta, sustituir)` (`security definer`), que **exige y gasta** una reserva de `consumir_uso_ia()` del propio usuario, de su empresa, de los últimos 10 minutos y aún no usada: la borra de `uso_ia_reservas`, así que ya no se puede devolver con `devolver_uso_ia()` ni usar para otra propuesta (además, `reserva` es única en la tabla). Un usuario que consuma a mano, guarde una propuesta inventada y devuelva el uso se queda con el uso gastado: cada propuesta guardada cuesta un uso de la cuota, como una de verdad.
+  - Lo que puede hacer aun así un usuario de la empresa, gastando su cuota, es guardar una propuesta que no haya hecho la IA para una descripción. Se acepta: solo afecta a su empresa, se revalida al leerla (materiales del almacén con su precio, límites de cantidades e importes) y ese mismo usuario puede escribir cualquier partida a mano en un presupuesto.
+  - La primera propuesta guardada para una clave gana: si dos peticiones con la misma descripción coinciden, la función devuelve la que había y la acción enseña esa (las dos ven lo mismo). Solo se sustituye (`p_sustituir`) cuando la guardada ya no pasa la validación.
+  - La forma se comprueba también en SQL (objeto con 1–30 partidas, como mucho 6 supuestos, 128 KB) y la clave tiene que ser un SHA-256 en hexadecimal.
+  - Las propuestas no caducan: la misma descripción da lo mismo mañana. El seed las borra de las empresas de demo.
+- **Panel.** Si la propuesta viene de la caché, dice «Misma descripción que una propuesta anterior: mismas partidas.» y «Esta no ha gastado ninguna de tus propuestas con IA de hoy.» en lugar de las que quedan.
+- **Sustituir por defecto.** Pedir otra propuesta **sustituye** las partidas del formulario (antes se sumaban y tres pruebas daban 15.000 € en vez de 4.400 €). «Añadir detrás de las partidas actuales» es la casilla opcional. Las filas vacías se siguen quitando. La lógica está en `combinarPropuesta()` del dominio, con tests.
+- Migración `0009_ia_cache.sql`, entre `begin` y `commit`. Orden: 0001 → 0009 → seed (el seed la necesita). Solo añade la tabla y las funciones y se puede repetir sin perder propuestas.
+

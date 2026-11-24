@@ -1,6 +1,6 @@
 -- Tajo · 0006_obras.sql — obras, partes de trabajo y margen real (D11, tarea T16a).
 -- Orden de ejecución: 0001 → 0002 → 0003 → 0004 → 0005 → este fichero → seed.sql (el seed lo necesita).
--- Orden completo: 0001 → 0002 → 0003 → 0004 → 0005 → 0006 → 0007 → 0008_auditoria3.sql → seed.sql.
+-- Orden completo: 0001 → 0002 → 0003 → 0004 → 0005 → 0006 → 0007 → 0008 → 0009_ia_cache.sql → seed.sql.
 -- Cómo se ejecuta: Supabase → SQL Editor (rol postgres) → pegar este fichero entero → Run. El SQL Editor lo ejecuta en
 -- una sola transacción: si algo falla, no se aplica nada. Se aplica sobre una base con datos y no borra nada. Se puede
 -- volver a ejecutar (create … if not exists, create or replace, drop … if exists): conserva obras y partes.
