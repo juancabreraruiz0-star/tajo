@@ -1,18 +1,25 @@
 "use client";
 
-import { Analytics, type BeforeSendEvent } from "@vercel/analytics/next";
+import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 
-/**
- * Vercel Web Analytics (sin cookies). El enlace público del presupuesto lleva el token en la ruta, que da acceso al
- * presupuesto: se sustituye por «[token]» antes de enviar la visita, para que no quede en las estadísticas.
- */
-function ocultarToken(evento: BeforeSendEvent): BeforeSendEvent {
-  const url = new URL(evento.url);
-  url.pathname = url.pathname.replace(/^\/p\/[^/]+/, "/p/[token]");
-  url.search = "";
-  return { ...evento, url: url.toString() };
+/** Sustituye el token del enlace público del presupuesto por «[token]» y quita la query. */
+function urlSinToken(url: string): string {
+  const u = new URL(url);
+  u.pathname = u.pathname.replace(/^\/p\/[^/]+/, "/p/[token]");
+  u.search = "";
+  return u.toString();
 }
 
+/**
+ * Vercel Web Analytics y Speed Insights (sin cookies). El enlace público del presupuesto lleva en la ruta el token
+ * que da acceso al presupuesto: se tapa antes de enviar nada, para que no quede en las estadísticas.
+ */
 export function Analitica() {
-  return <Analytics beforeSend={ocultarToken} />;
+  return (
+    <>
+      <Analytics beforeSend={(evento) => ({ ...evento, url: urlSinToken(evento.url) })} />
+      <SpeedInsights beforeSend={(evento) => ({ ...evento, url: urlSinToken(evento.url) })} />
+    </>
+  );
 }

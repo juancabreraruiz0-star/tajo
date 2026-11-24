@@ -72,8 +72,10 @@ export function GuiaDemo({ guia, obraEnRojo }: GuiaDemoProps) {
                 <Link
                   href={paso.href}
                   className={cn(
-                    "group flex h-full gap-3 rounded-lg bg-white/80 p-3 ring-1 transition-[box-shadow,background-color] duration-150 ring-inset hover:bg-white hover:shadow-tarjeta",
-                    siguiente ? "ring-amber-400" : "ring-stone-200",
+                    "group flex h-full gap-3 rounded-lg p-3 ring-1 transition-[box-shadow,background-color] duration-150 ring-inset hover:shadow-tarjeta",
+                    paso.hecho
+                      ? "bg-green-50 ring-green-200 hover:bg-green-100/70"
+                      : cn("bg-white/80 hover:bg-white", siguiente ? "ring-amber-400" : "ring-stone-200"),
                   )}
                 >
                   {paso.hecho ? (
@@ -94,7 +96,7 @@ export function GuiaDemo({ guia, obraEnRojo }: GuiaDemoProps) {
                     <span
                       className={cn(
                         "block text-sm leading-snug font-medium group-hover:text-amber-800",
-                        paso.hecho ? "text-stone-500" : "text-stone-900",
+                        paso.hecho ? "text-green-900" : "text-stone-900",
                       )}
                     >
                       {paso.titulo}
