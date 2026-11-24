@@ -198,7 +198,7 @@ insert into public.invitaciones (email, empresa_id, rol)
 values ('nombre@reformaslevante.es', '00000000-0000-0000-0000-000000000001', 'empleado');
 ```
 
-**En Vercel**: importa el repositorio y define las mismas dos variables de entorno. Antes, comprueba en Supabase los pasos 2 a 5: registro desactivado, las ocho migraciones y el seed. Las cabeceras de seguridad van en `next.config.ts`; en Vercel no hay que configurarlas.
+**En Vercel**: importa el repositorio y define las mismas dos variables de entorno. Antes, comprueba en Supabase los pasos 2 a 5: registro desactivado, las ocho migraciones y el seed. Las cabeceras de seguridad van en `next.config.ts`; en Vercel no hay que configurarlas. `vercel.json` ejecuta las funciones en Dublín (`dub1`), junto a la base de Supabase (eu-west-1): cada página hace varias consultas y en la región por defecto (Washington) cada una cruzaba el Atlántico. Si tu proyecto de Supabase está en otra región, cambia `regions` por la más cercana.
 
 ## Límites conocidos
 
