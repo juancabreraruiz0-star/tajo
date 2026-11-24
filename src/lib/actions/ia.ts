@@ -64,7 +64,8 @@ async function leerGuardada(supabase: SupabaseServerClient, empresaId: string, c
  * la IA y la versión de la petición se calcula una clave (src/lib/domain/cache-ia.ts). Si ya hay una propuesta
  * guardada con esa clave y sigue pasando validarSugerencia contra el almacén actual, se devuelve tal cual: sin llamar a
  * la IA y sin gastar cuota. Si no, se pide a la IA y la propuesta ya validada se guarda con guardar_propuesta_ia()
- * (0009), que gasta la reserva de este uso.
+ * (0009), que gasta la reserva de este uso; si la ha dado un modelo de respaldo (fallback) en vez de MODELO_IA, no se
+ * guarda.
  *
  * Orden: sesión → descripción válida → materiales (RLS) → propuesta guardada → cuota (consumir_uso_ia, ANTES de llamar
  * a la IA) → Claude → validación de la respuesta en el dominio → guardar.
@@ -118,6 +119,10 @@ export async function sugerirPartidas(descripcion: unknown): Promise<SugerenciaI
 
   const sugerencia = validarSugerencia(respuesta.datos, almacen);
   if (!sugerencia.ok) return { error: sugerencia.error };
+
+  // Respuesta de un modelo de respaldo (fallback): para el usuario vale, pero no se guarda. La clave es la de MODELO_IA
+  // y la siguiente vez se volverá a pedir. El uso ya está gastado (la IA ha respondido) y la reserva caduca sola.
+  if (respuesta.deRespaldo) return { ...sugerencia.data, repetida: false, quedan: cuota.quedan };
 
   const final = await guardar(supabase, cuota.reserva, clave, sugerencia.data, almacen, guardada !== undefined);
   return { ...final, repetida: false, quedan: cuota.quedan };

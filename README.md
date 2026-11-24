@@ -2,16 +2,6 @@
 
 Aplicación web de gestión para una pequeña empresa de reformas: clientes, presupuestos, obras, facturas y almacén de materiales. Los datos de demo son de una empresa ficticia, Reformas Levante S.L. (Valencia).
 
-Qué se puede hacer:
-
-- **Clientes**: listado con búsqueda por nombre, alta, edición y ficha con el historial de presupuestos y facturas. Cada cliente puede tener NIF, NIE o CIF, que se valida con su letra o dígito de control en la aplicación y también en la base de datos.
-- **Presupuestos**: partidas con cantidad y precio, totales (base, IVA y total) calculados al momento y numeración automática (`P-2026-0001`). La validez (30 días por defecto) cuenta desde que se envía y no se puede enviar un presupuesto de 0 €. Cada presupuesto enviado tiene un **enlace público** que el cliente abre sin cuenta y desde el que lo acepta escribiendo su nombre y apellidos; queda constancia de quién lo envió, del nombre, la IP y el navegador con los que se aceptó (ver «Aceptación por enlace»). El enlace se copia o se manda con **«Enviar por WhatsApp»**, que abre el chat del cliente (su teléfono pasado a formato internacional, +34 si no lleva prefijo) con un mensaje corto ya escrito: saludo, título del presupuesto, enlace y firma de la empresa. Si el cliente no tiene un teléfono válido, WhatsApp deja elegir el contacto. Con la validez vencida ya no se ofrece. Si el cliente lo confirma por otra vía, gerencia puede darlo por aceptado, y queda constancia de quién lo hizo. Gerencia también puede generar un enlace nuevo; el anterior deja de funcionar.
-- **Obras**: cada presupuesto aceptado se convierte solo en una obra. La obra se empieza, se para, se reanuda y se termina; tiene encargado (lo asigna gerencia), fechas de inicio, fin prevista y fin real, y notas. La cuadrilla apunta desde el móvil **partes de trabajo**: fecha, horas («7,5» vale), notas y el material del almacén que ha gastado, buscado por nombre. Cada obra compara **lo presupuestado (base sin IVA) con el coste real** (horas × coste por hora + material a su coste) con un semáforo: verde por debajo del 80 %, ámbar hasta el 100 % y rojo por encima. Gerencia ve los importes, el % consumido y el margen; el encargado ve las horas y solo el semáforo («Va bien», «Ajustada», «En pérdidas»), sin importes ni porcentaje. Un parte lo cambia o lo borra su autor el mismo día, o gerencia; los de una obra terminada ya no se tocan. Como mucho 24 h por persona y día, y con fecha de hace 30 días como mucho. Desde el presupuesto se llega a su obra («Ver la obra» y un hito más en su línea de tiempo) y la ficha del cliente lista sus obras.
-- **Facturas**: gerencia convierte un presupuesto aceptado en factura con un clic (`F-2026-0001`). La factura guarda una copia de los datos del cliente, de la empresa y de las partidas en ese momento, y se imprime o se guarda como **PDF**. No se factura a un cliente sin NIF.
-- **Materiales**: unidad, precio, stock y stock mínimo, y el coste para la empresa (sin IVA), que solo ve y cambia gerencia y que usan los partes de obra para el margen (si está vacío, se usa el precio). Al facturar se descuenta del stock el material de las partidas, y lo que queda bajo mínimo se marca en rojo y sale en el panel.
-- **Panel por rol**: presupuestos pendientes de respuesta, tasa de aceptación, stock bajo y obras en curso (primero las que peor van; gerencia, ordenadas por % consumido) para todos; facturado en el mes, últimas facturas y obras en pérdidas (margen negativo, con su importe) solo para gerencia.
-- **Guía de la demo**: en el panel, un bloque «Prueba Tajo en 3 minutos» con los pasos del recorrido y un enlace a donde se hace cada uno. Los pasos se marcan solos con lo que ha pasado hoy en los datos (no con clics): un presupuesto creado, uno enviado, uno aceptado desde el enlace, una factura (solo gerencia) y un parte apuntado por quien mira. Se oculta con «Ya lo conozco» (se recuerda en una cookie de ese navegador, no en la base) y vuelve con «Ver la guía de la demo», junto a la fecha.
-
 ## Demo
 
 App: https://tajo-delta.vercel.app
@@ -21,12 +11,12 @@ App: https://tajo-delta.vercel.app
 | `gerencia@reformaslevante.es` | admin | Todo, incluidas las facturas y las cifras de facturación |
 | `obra@reformaslevante.es` | empleado | Clientes, presupuestos, obras (con el semáforo, sin importes, porcentaje ni margen) y materiales |
 
-La contraseña se entrega junto con la prueba.
+La contraseña se entrega junto con la prueba (no está en el repositorio).
 
 Recorrido sugerido (3 minutos; el panel trae la misma guía, «Prueba Tajo en 3 minutos», y va marcando los pasos):
 
 1. Entra como `obra@reformaslevante.es`.
-2. Crea un presupuesto: elige un cliente, añade un par de partidas y vincula alguna a un material del almacén (o pulsa «Montar con IA» si está activada).
+2. Crea un presupuesto: elige un cliente, añade un par de partidas y vincula alguna a un material del almacén (o describe la obra en el «Asistente Tajo» y pulsa «Proponer partidas»).
 3. En el detalle, pulsa «Marcar como enviado» y después «Copiar enlace» (o «Enviar por WhatsApp»).
 4. Ahora haz de cliente: abre el enlace en una ventana de incógnito (sin sesión), escribe un nombre y pulsa «Aceptar presupuesto». Su obra aparece sola en Obras.
 5. En Obras, abre «Reforma de cocina» (en curso, de la que eres encargado) y pulsa «Añadir parte»: horas de hoy y algo de material. Como encargado ves cómo va con el semáforo, sin importes ni porcentaje.
@@ -36,12 +26,24 @@ Recorrido sugerido (3 minutos; el panel trae la misma guía, «Prueba Tajo en 3 
 9. Mira en el Panel «Obras en pérdidas»: la reforma de cocina va en rojo, con su margen negativo en euros. Ábrela para ver el desglose de mano de obra y material.
 10. Mira en Materiales cómo ha bajado el stock del material vinculado, y en el Panel cómo cambian «Facturado este mes», la tasa de aceptación y las últimas facturas.
 
-## Presupuesto con IA
+Con solo 2 minutos: pasos 1 a 4 (presupuesto con el asistente, envío y aceptación como cliente) y 6 y 7 (gerencia lo factura).
 
-En el formulario de presupuesto (alta y edición en borrador) está el panel **«Montar con IA»**. Escribes la obra como se la contarías a un compañero, por ejemplo «reforma de baño de 6 m²: quitar bañera, plato de ducha de 120, alicatado hasta el techo y mampara», y la IA propone las partidas: demoliciones, fontanería, alicatado, mano de obra… con cantidades y unidades. Cuando una partida encaja con un material del almacén, la vincula y usa su precio; la mano de obra y lo que no está en el almacén van sin material, con precio de mercado. A la IA se le pasan como mucho 200 materiales (por orden alfabético): en un almacén más grande, los que queden fuera no se pueden vincular.
+## Qué hace
 
-- **Las partidas se ponen en el formulario, no se guardan.** Sustituyen a las que hubiera (pedir otra propuesta no las suma: probarla tres veces no triplica el presupuesto); si quieres conservarlas, marca «Añadir detrás de las partidas actuales». Aparecen resaltadas un momento y se editan o se quitan como cualquier otra. Lo que la IA ha tenido que suponer (alturas, calidades…) se muestra en un aviso «La IA ha supuesto:».
-- **Misma descripción, mismo presupuesto.** La IA no es determinista, así que la aplicación guarda cada propuesta ya validada con una huella de la empresa, la descripción (sin distinguir mayúsculas, espacios, saltos de línea ni la puntuación del final; los números y las unidades sí cuentan) y el almacén que se le pasa a la IA (materiales, unidades y precios). Si se vuelve a pedir lo mismo, devuelve exactamente las mismas partidas, en el mismo orden y con los mismos supuestos, al momento, sin llamar a la IA y sin gastar cuota; el panel lo indica («Misma descripción que una propuesta anterior: mismas partidas»). Si cambia el almacén (un precio, una unidad, un material nuevo o borrado), se vuelve a pedir. Las propuestas guardadas están en la tabla `ia_propuestas` (migración `0009`): cada empresa lee solo las suyas y solo se escriben gastando un uso de la cuota (ver D14 en `docs/DECISIONES.md`).
+- **Clientes**: listado con búsqueda por nombre, alta, edición y ficha con el historial de presupuestos y facturas. Cada cliente puede tener NIF, NIE o CIF, que se valida con su letra o dígito de control en la aplicación y también en la base de datos.
+- **Presupuestos**: partidas con cantidad y precio, totales (base, IVA y total) calculados al momento y numeración automática (`P-2026-0001`). Con el **Asistente Tajo**, la IA propone las partidas a partir de una descripción de la obra (ver más abajo). La validez (30 días por defecto) cuenta desde que se envía y no se puede enviar un presupuesto de 0 €. Cada presupuesto enviado tiene un **enlace público** que el cliente abre sin cuenta y desde el que lo acepta escribiendo su nombre y apellidos; queda constancia de quién lo envió, del nombre, la IP y el navegador con los que se aceptó (ver «Aceptación por enlace»). El enlace se copia o se manda con **«Enviar por WhatsApp»**, que abre el chat del cliente (su teléfono pasado a formato internacional, +34 si no lleva prefijo) con un mensaje corto ya escrito: saludo, título del presupuesto, enlace y firma de la empresa. Si el cliente no tiene un teléfono válido, WhatsApp deja elegir el contacto. Con la validez vencida ya no se ofrece. Si el cliente lo confirma por otra vía, gerencia puede darlo por aceptado, y queda constancia de quién lo hizo. Gerencia también puede generar un enlace nuevo; el anterior deja de funcionar.
+- **Obras**: cada presupuesto aceptado se convierte solo en una obra. La obra se empieza, se para, se reanuda y se termina; tiene encargado (lo asigna gerencia), fechas de inicio, fin prevista y fin real, y notas. La cuadrilla apunta desde el móvil **partes de trabajo**: fecha, horas («7,5» vale), notas y el material del almacén que ha gastado, buscado por nombre. Cada obra compara **lo presupuestado (base sin IVA) con el coste real** (horas × coste por hora + material a su coste) con un semáforo: verde por debajo del 80 %, ámbar hasta el 100 % y rojo por encima. Gerencia ve los importes, el % consumido y el margen; el encargado ve las horas y solo el semáforo («Va bien», «Ajustada», «En pérdidas»), sin importes ni porcentaje. Un parte lo cambia o lo borra su autor el mismo día, o gerencia; los de una obra terminada ya no se tocan. Como mucho 24 h por persona y día, y con fecha de hace 30 días como mucho. Desde el presupuesto se llega a su obra («Ver la obra» y un hito más en su línea de tiempo) y la ficha del cliente lista sus obras.
+- **Facturas**: gerencia convierte un presupuesto aceptado en factura con un clic (`F-2026-0001`). La factura guarda una copia de los datos del cliente, de la empresa y de las partidas en ese momento, y se imprime o se guarda como **PDF**. No se factura a un cliente sin NIF.
+- **Materiales**: unidad, precio, stock y stock mínimo, y el coste para la empresa (sin IVA), que solo ve y cambia gerencia y que usan los partes de obra para el margen (si está vacío, se usa el precio). Al facturar se descuenta del stock el material de las partidas, y lo que queda bajo mínimo se marca en rojo y sale en el panel.
+- **Panel por rol**: presupuestos pendientes de respuesta, tasa de aceptación, stock bajo y obras en curso (primero las que peor van; gerencia, ordenadas por % consumido) para todos; facturado en el mes, últimas facturas y obras en pérdidas (margen negativo, con su importe) solo para gerencia.
+- **Guía de la demo**: en el panel, un bloque «Prueba Tajo en 3 minutos» con los pasos del recorrido y un enlace a donde se hace cada uno. Los pasos se marcan solos con lo que ha pasado hoy en los datos (no con clics): un presupuesto creado, uno enviado, uno aceptado desde el enlace, una factura (solo gerencia) y un parte apuntado por quien mira. Se oculta con «Ya lo conozco» (se recuerda en una cookie de ese navegador, no en la base) y vuelve con «Ver la guía de la demo», junto a la fecha.
+
+## Asistente Tajo: presupuesto con IA
+
+En el formulario de presupuesto (alta y edición en borrador) está el panel **«Asistente Tajo»**. Escribes la obra como se la contarías a un compañero, por ejemplo «reforma de baño de 6 m²: quitar bañera, plato de ducha de 120, alicatado hasta el techo y mampara», pulsas «Proponer partidas» y la IA propone las partidas: demoliciones, fontanería, alicatado, mano de obra… con cantidades y unidades. Cuando una partida encaja con un material del almacén, la vincula y usa su precio; la mano de obra y lo que no está en el almacén van sin material, con precio de mercado. A la IA se le pasan como mucho 200 materiales (por orden alfabético): en un almacén más grande, los que queden fuera no se pueden vincular.
+
+- **Las partidas se ponen en el formulario, no se guardan.** Sustituyen a las que hubiera (pedir otra propuesta no las suma: probarla tres veces no triplica el presupuesto); si quieres conservarlas, marca «Añadir detrás de las partidas actuales». Aparecen resaltadas un momento y se editan o se quitan como cualquier otra. Lo que la IA ha tenido que suponer (alturas, calidades…) se muestra en un aviso «El asistente ha supuesto:».
+- **Misma descripción, mismo presupuesto.** La IA no es determinista, así que la aplicación guarda cada propuesta ya validada con una huella de la empresa, la descripción (sin distinguir mayúsculas, espacios, saltos de línea ni la puntuación del final; los números y las unidades sí cuentan) y el almacén que se le pasa a la IA (materiales, unidades y precios). Si se vuelve a pedir lo mismo, devuelve exactamente las mismas partidas, en el mismo orden y con los mismos supuestos, al momento, sin llamar a la IA y sin gastar cuota; el panel lo indica («Misma descripción que una propuesta anterior: mismas partidas»). Si cambia el almacén (un precio, una unidad, un material nuevo o borrado), se vuelve a pedir. Las propuestas guardadas están en la tabla `ia_propuestas` (migraciones `0009` y `0010`): cada empresa lee solo las suyas, solo se escriben gastando un uso de la cuota y una ya guardada solo la sustituye quien la pidió o gerencia. Si cambia algún parámetro de la petición (modelo, instrucciones, esquema, esfuerzo, límite de salida o respaldo), se vuelve a pedir; y si responde el modelo de respaldo en vez del principal, la propuesta se usa pero no se guarda (ver D14 en `docs/DECISIONES.md`).
 - **La respuesta se valida antes de tocar el formulario.** Es un dato no fiable, así que una función del dominio con tests (`src/lib/domain/sugerencias.ts`) la revisa: solo se vinculan materiales del almacén de tu empresa y medidos en su misma unidad (si no, la partida queda sin vincular, con el precio y la unidad de la IA); una partida vinculada lleva siempre el precio del almacén, diga lo que diga la IA; cantidades y precios dentro de los mismos límites que el formulario y redondeados al céntimo; como mucho 30 partidas y textos recortados y sin caracteres de control ni invisibles. Lo que no pasa se descarta y se avisa de cuántas partidas han sido.
 - **Es opcional.** Funciona con la API de Anthropic (modelo Claude Opus 5.5, salida estructurada con un esquema JSON). Si no hay `ANTHROPIC_API_KEY` en el servidor, el panel no aparece y el resto de la aplicación funciona igual. La clave solo vive en el servidor: la llamada se hace desde una Server Action y nunca llega al navegador.
 - **Cuota de 40 propuestas al día por empresa y 15 por usuario** (día de Madrid), contada en la base de datos antes de llamar a la IA (`consumir_uso_ia()`, migraciones `0005` y `0007`; una descripción repetida no cuenta), para que una clave de demo no se pueda gastar sin control ni un solo usuario deje sin IA al resto. Al pasarla, la aplicación lo dice y vuelve a funcionar al día siguiente. Si la IA no llega a atender la petición (límite de peticiones, clave mal configurada, servicio caído o sin conexión), el uso se devuelve; si responde, aunque sea para rechazarla o con una respuesta que no vale, cuenta, y también si tarda más de 55 segundos, porque puede haber seguido trabajando y cobrándose. La devolución exige una reserva que solo conoce el servidor, así que nadie puede devolverse usos a mano para tenerlos ilimitados.
@@ -50,7 +52,7 @@ En el formulario de presupuesto (alta y edición en borrador) está el panel **�
 
 Para activarla:
 
-1. Ten la base migrada entera, hasta la `0009` (la cuota está en la `0005`, la de cada usuario en la `0007` y las propuestas guardadas en la `0009`; ver «Ponerlo en marcha»).
+1. Ten la base migrada entera, hasta la `0010` (la cuota está en la `0005`, la de cada usuario en la `0007` y las propuestas guardadas en la `0009` y la `0010`; ver «Ponerlo en marcha»).
 2. Añade `ANTHROPIC_API_KEY` en `.env.local` (y en Vercel, en las variables de entorno del proyecto) y vuelve a arrancar o desplegar.
 
 ## Cómo está hecho: equipo de 3 agentes
@@ -75,7 +77,7 @@ El rastro queda en estos documentos:
 - `docs/REQUISITOS.md`: qué tiene que hacer la aplicación (R1–R21). Si no está ahí, no se construye.
 - `docs/PLAN.md`: las tareas, los requisitos que cubre cada una y su estado, con las vueltas que hizo falta dar.
 - `docs/DECISIONES.md`: decisiones que afectan a varias tareas (modelo de datos, seguridad, rutas, PDF, diseño).
-- `docs/AUDITORIA.md`, `docs/AUDITORIA-2.md` y `docs/AUDITORIA-3.md`: las tres auditorías externas de seguridad y calidad, y sus hallazgos.
+- `docs/AUDITORIA.md` a `docs/AUDITORIA-4.md`: las cuatro auditorías externas de seguridad y calidad, y sus hallazgos.
 
 ### Lo que testing devolvió a develop
 
@@ -87,6 +89,7 @@ El rastro queda en estos documentos:
 | T11a · Base de datos de la auditoría | La cantidad máxima de una partida era distinta en la app (1.000.000.000) y en la base (`numeric(12,3)`, que no llega). | La base pasó a `numeric(13,3)` con un `CHECK` del mismo máximo que la app. Aprobada a la tercera vuelta. |
 | Segunda auditoría ([`docs/AUDITORIA-2.md`](docs/AUDITORIA-2.md)) | Tras IA y obras, dio por bueno el aislamiento entre empresas, los roles y la facturación, pero vio que un empleado podía aceptar un presupuesto por el enlace como si fuera el cliente, que con la base y el % consumido se reconstruía el margen que se le ocultaba, y varios límites que solo ponía la app (NIF, horas por día, fechas de los partes, borrado de aceptados). | T17a (`0007_auditoria2.sql`, tests de base de datos en PGlite y CI) y T17b (aplicación): la aceptación pide el nombre y guarda IP, navegador y quién lo envió; el encargado ve solo el semáforo; cuota de IA por usuario; esas reglas pasan a la base y el README dice lo que no se puede evitar. |
 | Tercera auditoría ([`docs/AUDITORIA-3.md`](docs/AUDITORIA-3.md)) | Sin bloqueantes ni fallos de seguridad. Vio que la validez se contaba desde la creación y no desde el envío, que el coste de un material no se podía poner desde la app, que un presupuesto de 0 € se podía enviar y facturar, que el empleado podía leer por la API la IP y el navegador de la aceptación, y detalles de documentación, código muerto y datos de demo. | T18 (`0008_auditoria3.sql` y aplicación): validez desde el envío, coste en el formulario de materiales (solo gerencia), sin envíos de 0 €, nombre de quien envió copiado al enviar, IP y navegador en una tabla que solo lee gerencia, pantallas de error en español y contactos de demo ficticios. |
+| Cuarta auditoría ([`docs/AUDITORIA-4.md`](docs/AUDITORIA-4.md)) | Comprobó en producción que la `0009` sí estaba aplicada (la documentación decía lo contrario) y vio seis commits del orquestador sin tarea en el plan, que cualquier compañero podía sustituir una propuesta guardada del asistente, que la clave de la caché no recogía `effort`, `max_tokens` ni `fallbacks`, textos viejos y dos detalles de accesibilidad. | T21 (`0010_ia_cache_autor.sql` y aplicación): solo el autor o gerencia sustituyen una propuesta, la clave sale de los mismos parámetros que la llamada y no se guardan respuestas del modelo de respaldo; los cambios del orquestador quedan en el plan y en D15. |
 
 ## Arquitectura
 
@@ -142,7 +145,7 @@ Decisiones clave:
 ## Calidad
 
 - `npm test`: tests de la lógica de dominio y de la regla de rutas públicas del middleware (Vitest).
-- `npm run test:pglite`: tests de la base de datos en PGlite (Postgres en local, sin Supabase ni contraseñas). Aplican `0001` → `0009` y el seed y comprueban RLS, roles, triggers y funciones como anónimo, empleado, gerencia y otra empresa.
+- `npm run test:pglite`: tests de la base de datos en PGlite (Postgres en local, sin Supabase ni contraseñas). Aplican `0001` → `0010` y el seed y comprueban RLS, roles, triggers y funciones como anónimo, empleado, gerencia y otra empresa.
 - **CI** en GitHub Actions: en cada push y pull request a `main` ejecuta `npm run check`, que ya incluye `test:pglite`.
 
 ```bash
@@ -154,7 +157,7 @@ npm run build        # build de producción (lo que despliega Vercel)
 npm run check        # lint, typecheck, test, test:pglite y build, en orden
 ```
 
-Cifras: `npm test`, 710 tests en 28 ficheros; `npm run test:pglite`: 138 tests en 9 ficheros.
+Cifras: `npm test`, 719 tests en 28 ficheros; `npm run test:pglite`: 145 tests en 9 ficheros.
 
 **Tests de la base de datos** (`npm run test:db`): entran en el Supabase real como anónimo, como obra (empleado) y como gerencia (admin), y comprueban qué puede y qué no puede hacer cada uno. Por ejemplo: que el anónimo no lee ninguna tabla ni puede registrarse, que nadie ve los datos de otra empresa, que obra no puede dar por aceptado un presupuesto ni regenerar el enlace, que la aceptación por enlace queda con canal `enlace`, que la vista de totales cuadra con las partidas y que regenerar el enlace deja inservible el anterior. No forman parte de `npm test` porque necesitan las contraseñas, que solo se pasan por variable de entorno:
 
@@ -162,7 +165,7 @@ Cifras: `npm test`, 710 tests en 28 ficheros; `npm run test:pglite`: 138 tests e
 TAJO_PASS_GERENCIA=... TAJO_PASS_OBRA=... npm run test:db
 ```
 
-Necesitan la base migrada entera (hasta `0009`) y el seed recién ejecutado. Crean datos con el prefijo `[test]` y los borran al final, pero consumen números de presupuesto: no los ejecutes contra una base con datos reales.
+Necesitan la base migrada entera (hasta `0010`) y el seed recién ejecutado. Crean datos con el prefijo `[test]` y los borran al final, pero consumen números de presupuesto: no los ejecutes contra una base con datos reales.
 
 ## Ponerlo en marcha
 
@@ -175,11 +178,12 @@ Hace falta Node.js 22.12 o superior (lo pide Vitest 5 para los tests) y una cuen
    2. `supabase/migrations/0002_reglas.sql`
    3. `supabase/migrations/0003_guardar_presupuesto.sql`
    4. `supabase/migrations/0004_auditoria.sql`
-   5. `supabase/migrations/0005_uso_ia.sql` (la cuota de «Montar con IA»; ejecútala aunque no vayas a usar la IA, para seguir el mismo orden)
+   5. `supabase/migrations/0005_uso_ia.sql` (la cuota del asistente; ejecútala aunque no vayas a usar la IA, para seguir el mismo orden)
    6. `supabase/migrations/0006_obras.sql` (obras, partes de trabajo y margen; el seed la necesita)
    7. `supabase/migrations/0007_auditoria2.sql` (correcciones de la segunda auditoría: evidencia de la aceptación, semáforo, NIF, partes y cuota por usuario)
    8. `supabase/migrations/0008_auditoria3.sql` (correcciones de la tercera auditoría: validez desde el envío, sin envíos de 0 €, nombre de quien envió fijo, IP y navegador solo para gerencia)
    9. `supabase/migrations/0009_ia_cache.sql` (propuestas de IA guardadas: misma descripción, mismo presupuesto; el seed la necesita)
+   10. `supabase/migrations/0010_ia_cache_autor.sql` (una propuesta guardada solo la sustituye quien la pidió o gerencia; el seed la necesita)
 4. Crea los dos usuarios en Authentication → Add user, marcando *Auto Confirm User* (el perfil solo se crea con el email confirmado): `gerencia@reformaslevante.es` y `obra@reformaslevante.es`, con la contraseña que quieras.
 5. En el SQL Editor, ejecuta `supabase/seed.sql` entero de una vez: invita a los dos usuarios, les crea el perfil (gerencia como admin) y carga los datos de demo.
 6. Copia `.env.example` a `.env.local` y rellena `NEXT_PUBLIC_SUPABASE_URL` y `NEXT_PUBLIC_SUPABASE_ANON_KEY` con la URL y la clave anónima del proyecto (están en los ajustes de API de Supabase).
@@ -191,7 +195,7 @@ Hace falta Node.js 22.12 o superior (lo pide Vitest 5 para los tests) y una cuen
 
    La aplicación queda en `http://localhost:3000`.
 
-No vuelvas a ejecutar `0001`–`0003` sobre una base que ya tiene la `0004`: redefinen funciones que la `0004` cambia. El orden completo es `0001` → `0002` → `0003` → `0004` → `0005` → `0006` → `0007` → `0008` → `0009` → `seed.sql`. Sobre una base que ya tenía hasta la `0007`, basta con ejecutar la `0008` y la `0009`, desplegar justo después la versión de la aplicación que la usa y volver a ejecutar `seed.sql` (cambia los contactos de demo por los ficticios de D13). Sobre una base que ya tiene hasta la `0008` (como la de la demo), basta con ejecutar la `0009`: solo añade una tabla y una función, no toca datos y se puede aplicar antes o después de desplegar (sin ella, la aplicación nueva funciona como antes, sin guardar propuestas). No hace falta volver a ejecutar el seed.
+No vuelvas a ejecutar `0001`–`0003` sobre una base que ya tiene la `0004`: redefinen funciones que la `0004` cambia. El orden completo es `0001` → `0002` → `0003` → `0004` → `0005` → `0006` → `0007` → `0008` → `0009` → `0010` → `seed.sql`. Sobre una base que ya tenía hasta la `0007`, basta con ejecutar de la `0008` a la `0010`, desplegar justo después la versión de la aplicación que las usa y volver a ejecutar `seed.sql` (cambia los contactos de demo por los ficticios de D13). Sobre una base que ya tiene hasta la `0009` (como la de la demo), basta con ejecutar la `0010`: solo cambia una función y añade otra interna, no toca datos, se puede repetir y se puede aplicar antes o después de desplegar. No hace falta volver a ejecutar el seed.
 
 **Dar de alta a alguien más**: primero la invitación en el SQL Editor y después el usuario en Authentication → Add user, con *Auto Confirm User* marcado. Al crearse el usuario, su perfil sale de la invitación.
 
@@ -200,11 +204,13 @@ insert into public.invitaciones (email, empresa_id, rol)
 values ('nombre@reformaslevante.es', '00000000-0000-0000-0000-000000000001', 'empleado');
 ```
 
-**En Vercel**: importa el repositorio y define las mismas dos variables de entorno. Antes, comprueba en Supabase los pasos 2 a 5: registro desactivado, las ocho migraciones y el seed. Las cabeceras de seguridad van en `next.config.ts`; en Vercel no hay que configurarlas. `vercel.json` ejecuta las funciones en Dublín (`dub1`), junto a la base de Supabase (eu-west-1): cada página hace varias consultas y en la región por defecto (Washington) cada una cruzaba el Atlántico. Si tu proyecto de Supabase está en otra región, cambia `regions` por la más cercana.
+**En Vercel**: importa el repositorio y define las mismas dos variables de entorno. Antes, comprueba en Supabase los pasos 2 a 5: registro desactivado, las diez migraciones y el seed. Las cabeceras de seguridad van en `next.config.ts`; en Vercel no hay que configurarlas. `vercel.json` ejecuta las funciones en Dublín (`dub1`), junto a la base de Supabase (eu-west-1): cada página hace varias consultas y en la región por defecto (Washington) cada una cruzaba el Atlántico. Si tu proyecto de Supabase está en otra región, cambia `regions` por la más cercana.
+
+**Analytics y Speed Insights**: Vercel Web Analytics y Speed Insights ya están en el código (`src/components/analitica.tsx`, sin cookies); se activan en el panel del proyecto en Vercel (pestañas Analytics y Speed Insights). Antes de enviar cada visita se tapa el token del enlace público (`/p/[token]`) y se quita la query, para que el enlace de un presupuesto no quede en las estadísticas.
 
 ## Límites conocidos
 
-- **La demo es compartida.** Todos los evaluadores entran con los mismos dos usuarios: la cuota de «Montar con IA» (15 propuestas por usuario y día, 40 por empresa) y la guía de la demo, que se marca con lo que ha pasado hoy en los datos, son comunes. Si alguien termina la obra «Reforma de cocina», factura los aceptados o cambia los datos, el recorrido sugerido deja de cuadrar. Se restaura volviendo a ejecutar `supabase/seed.sql` en el SQL Editor: borra y vuelve a crear los datos de demo de las dos empresas (no borra los usuarios ni la cuenta de usos de IA del día).
+- **La demo es compartida.** Todos los evaluadores entran con los mismos dos usuarios: la cuota del asistente (15 propuestas por usuario y día, 40 por empresa) y la guía de la demo, que se marca con lo que ha pasado hoy en los datos, son comunes. Si alguien termina la obra «Reforma de cocina», factura los aceptados o cambia los datos, el recorrido sugerido deja de cuadrar. Se restaura volviendo a ejecutar `supabase/seed.sql` en el SQL Editor: borra y vuelve a crear los datos de demo de las dos empresas (no borra los usuarios ni la cuenta de usos de IA del día).
 - **Una sola empresa de demo.** El modelo de datos y la RLS separan los datos por empresa, pero no hay alta de empresas ni pantalla de invitaciones: los usuarios nuevos se invitan desde el SQL Editor.
 - **Los usuarios se crean en el panel de Supabase.** No hay pantalla de usuarios, de cambio de rol ni de recuperación de contraseña. Al crearlos con «Add user» hay que marcar *Auto Confirm User*: el perfil solo se crea con el email confirmado. Un usuario que se registró y confirmó su email antes de ser invitado no recibe perfil al invitarlo: hay que borrarlo y volver a crearlo después de la invitación.
 - **IVA del 21 % o del 10 %**, uno por presupuesto (no por partida).
@@ -217,7 +223,6 @@ values ('nombre@reformaslevante.es', '00000000-0000-0000-0000-000000000001', 'em
 - **Las facturas no se editan ni se anulan** (no hay facturas rectificativas). La forma de pago no se configura: la factura dice «Según lo acordado con la empresa», porque no hay dónde guardar un IBAN. Las facturas emitidas antes de la `0004` se copiaron con los datos que tenía el cliente al aplicarla y sin NIF.
 - **El stock puede quedar en negativo** si se factura más material del que hay. No se bloquea la factura: el material sale como stock bajo y su pantalla de edición lo avisa.
 - **Paginación** en clientes, presupuestos, obras, partes de una obra y facturas (25 por página). No están paginados el almacén de materiales, los desplegables de clientes y materiales del formulario de presupuesto ni los materiales del panel: a partir de 1000 filas (el máximo de la API de Supabase) se cortan sin avisar.
-- **Cuota de «Montar con IA»**: 40 propuestas al día por empresa y 15 por usuario.
 - **La búsqueda de clientes** es solo por nombre y distingue acentos («garcia» no encuentra «García»).
 - **La CSP no limita los scripts** (no hay `script-src`): Next 15 usa scripts en línea y restringirlos exige un nonce por petición. Sí impide meter la app en un iframe, los formularios hacia otras webs y los plugins.
-- **Las pantallas y las Server Actions no tienen tests automáticos.** La lógica de dominio sí (`npm test`) y las reglas de la base también, en PGlite (`npm run test:pglite`, también en la CI) y contra el Supabase real (`npm run test:db`).
+- **Las pantallas y las Server Actions no tienen tests automáticos**, salvo la del asistente (`src/lib/actions/ia.test.ts`, con Supabase y la IA simulados). La lógica de dominio sí (`npm test`) y las reglas de la base también, en PGlite (`npm run test:pglite`, también en la CI) y contra el Supabase real (`npm run test:db`).

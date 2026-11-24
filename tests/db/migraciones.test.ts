@@ -2,8 +2,9 @@
 // perder nada, aborta con la lista si hay datos que no cumplirían sus reglas, y 0006, 0007 y el seed se pueden volver
 // a ejecutar. Después, 0008 sobre esa misma base (ya con 0007 y más actividad): mueve la IP y el navegador a su tabla,
 // rellena el nombre de quien envió, no pierde nada y se puede volver a ejecutar. Después, 0009 (caché de propuestas de
-// IA): no toca nada de lo que había y se puede volver a ejecutar sin perder las propuestas. El seed va al final
-// (necesita 0008 y 0009).
+// IA): no toca nada de lo que había y se puede volver a ejecutar sin perder las propuestas. Después, 0010 (solo el
+// autor o un admin sustituyen una propuesta guardada): conserva las propuestas y se puede repetir. El seed va al final
+// (necesita 0008, 0009 y 0010).
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
@@ -17,6 +18,7 @@ import {
   en,
   migracion,
   migraciones,
+  probar,
   seed,
   ser,
   unaEn,
@@ -26,6 +28,7 @@ import {
 const HASTA_0006 = migraciones().filter((m) => m < "0007");
 const HASTA_0007 = migraciones().filter((m) => m < "0008");
 const HASTA_0008 = migraciones().filter((m) => m < "0009");
+const HASTA_0009 = migraciones().filter((m) => m < "0010");
 
 let base: Base;
 /** Presupuestos creados como lo haría la app antes de 0007. */
@@ -330,7 +333,63 @@ describe("0009 sobre una base 0001 → 0008 con datos", () => {
   });
 });
 
-describe("seed sobre 0001 → 0009", () => {
+describe("0010 sobre una base 0001 → 0009 con propuestas guardadas", () => {
+  it("se aplica sin perder ni cambiar nada, también las propuestas con su autor, y se puede volver a ejecutar", async () => {
+    const antes = { foto: await foto(base), propuestas: await base.q("select * from ia_propuestas order by clave") };
+    expect(antes.propuestas).toHaveLength(1);
+    expect(antes.propuestas[0].perfil_id).toBe(OBRA);
+    await base.exec(migracion("0010_ia_cache_autor.sql"));
+    expect({ foto: await foto(base), propuestas: await base.q("select * from ia_propuestas order by clave") }).toEqual(antes);
+    await base.exec(migracion("0010_ia_cache_autor.sql"));
+    expect({ foto: await foto(base), propuestas: await base.q("select * from ia_propuestas order by clave") }).toEqual(antes);
+    expect(
+      await base.one(`
+        select to_regprocedure('public.ia_propuesta_sustituible(uuid)') is not null as f,
+               (select count(*)::int from pg_policies where tablename = 'ia_propuestas') as politicas`),
+    ).toEqual({ f: true, politicas: 1 });
+  });
+
+  it("después de 0010, la propuesta que ya estaba la sustituye su autor pero no otro empleado", async () => {
+    const r = await base.como("postgres", async (tx) => {
+      const nueva = JSON.stringify({ partidas: [{ descripcion: "Otra", cantidad: 2, unidad: "", precio_euros: 3, material_id: null }], supuestos: [] });
+      const sustituir = async (quien: typeof GER | typeof OBRA) => {
+        await ser(tx, quien);
+        const { reserva } = await unaEn(tx, "select * from consumir_uso_ia()");
+        return probar(tx, "select guardar_propuesta_ia($1, $2, $3::jsonb, true) as g", [reserva, "c".repeat(64), nueva]);
+      };
+      const ger = await sustituir(GER);
+      return { ger: ger.ok, obra: (await sustituir(OBRA)).ok };
+    });
+    // GER es admin: puede. OBRA ya no es el autor (ahora lo es GER) y no es admin: no puede.
+    expect(valor(r)).toEqual({ ger: true, obra: false });
+  });
+
+  it("sin 0009 no se aplica y lo dice; si falla, no deja nada (va en una transacción)", async () => {
+    const otra = await baseVacia();
+    try {
+      for (const m of HASTA_0008) await otra.exec(migracion(m));
+      await expect(otra.exec(migracion("0010_ia_cache_autor.sql"))).rejects.toThrow(/Falta la 0009/);
+      await otra.exec("rollback");
+      await otra.exec(migracion("0009_ia_cache.sql"));
+      // Una función con el mismo nombre y otro tipo de resultado: create or replace falla a mitad de la migración.
+      await otra.exec(`create function public.ia_propuesta_sustituible(p_autor uuid) returns text language sql as 'select null::text'`);
+      await expect(otra.exec(migracion("0010_ia_cache_autor.sql"))).rejects.toThrow(/return type/);
+      await otra.exec("rollback");
+      expect(
+        await otra.one(`
+          select position('ia_propuesta_sustituible' in p.prosrc) as usa,
+                 col_description('public.ia_propuestas'::regclass,
+                                 (select attnum from pg_attribute
+                                   where attrelid = 'public.ia_propuestas'::regclass and attname = 'perfil_id')) as comentario
+            from pg_proc p where p.oid = 'public.guardar_propuesta_ia(uuid, text, jsonb, boolean)'::regprocedure`),
+      ).toEqual({ usa: 0, comentario: null });
+    } finally {
+      await otra.cerrar();
+    }
+  });
+});
+
+describe("seed sobre 0001 → 0010", () => {
   async function fotoSeed() {
     return {
       presupuestos: await base.q(
@@ -381,6 +440,17 @@ describe("seed sobre 0001 → 0009", () => {
       for (const m of HASTA_0007) await otra.exec(migracion(m));
       await crearUsuariosDemo(otra);
       await expect(otra.exec(seed())).rejects.toThrow(/Falta aplicar migrations\/0008_auditoria3\.sql/);
+    } finally {
+      await otra.cerrar();
+    }
+  });
+
+  it("sin 0010 el seed se niega a ejecutarse y lo dice", async () => {
+    const otra = await baseVacia();
+    try {
+      for (const m of HASTA_0009) await otra.exec(migracion(m));
+      await crearUsuariosDemo(otra);
+      await expect(otra.exec(seed())).rejects.toThrow(/Falta aplicar migrations\/0010_ia_cache_autor\.sql/);
     } finally {
       await otra.cerrar();
     }

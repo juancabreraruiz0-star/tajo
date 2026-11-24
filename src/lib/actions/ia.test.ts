@@ -85,8 +85,9 @@ const MATERIALES: MaterialAlmacen[] = [
 const DESCRIPCION = "Reforma de baño de 6 m²: quitar la bañera y alicatado hasta el techo.";
 
 /** Respuesta de la IA: la mano de obra cambia de una llamada a otra (la IA no es determinista). */
-const respuestaIa = (horas: number) => ({
+const respuestaIa = (horas: number, deRespaldo = false) => ({
   ok: true,
+  deRespaldo,
   datos: {
     partidas: [
       { descripcion: "Demolición de alicatado", cantidad: 14, unidad: "m²", precio_euros: 12, material_id: null },
@@ -197,8 +198,39 @@ describe("sugerirPartidas · misma descripción, mismo presupuesto (D14)", () =>
     }
   });
 
-  it("si no se puede guardar, el usuario tiene su propuesta igualmente", async () => {
-    estado.errorGuardar = { message: "TJ005" };
+  it("una respuesta de un modelo de respaldo (fallback) se le da al usuario pero no se guarda: la siguiente vez se pide otra vez", async () => {
+    pedirPartidasIa.mockReset().mockResolvedValueOnce(respuestaIa(16, true)).mockResolvedValue(respuestaIa(18));
+    const primera = await sugerirPartidas(DESCRIPCION);
+    expect(primera).toMatchObject({ repetida: false, quedan: 14, descartadas: 0 });
+    if (primera.error !== undefined) throw new Error(primera.error);
+    expect(primera.partidas.map((p) => p.cantidad)).toEqual(["14", "18", "16"]);
+    expect(llamadas("guardar_propuesta_ia")).toHaveLength(0);
+    expect(llamadas("devolver_uso_ia")).toHaveLength(0);
+    expect(estado.guardadas.size).toBe(0);
+
+    // La siguiente la da el modelo principal: esa sí se guarda, y la tercera ya sale de la caché.
+    expect(await sugerirPartidas(DESCRIPCION)).toMatchObject({ repetida: false, quedan: 13 });
+    expect(llamadas("guardar_propuesta_ia")).toHaveLength(1);
+    expect(await sugerirPartidas(DESCRIPCION)).toMatchObject({ repetida: true });
+    expect(pedirPartidasIa).toHaveBeenCalledTimes(2);
+  });
+
+  it("una propuesta guardada que ya no vale tampoco se sustituye con una respuesta de respaldo", async () => {
+    await sugerirPartidas(DESCRIPCION);
+    const [clave] = [...estado.guardadas.keys()];
+    const mala = { partidas: [{ descripcion: "x", cantidad: -1, unidad: "", precio_euros: 1, material_id: null }], supuestos: [] };
+    estado.guardadas.set(clave, mala);
+    pedirPartidasIa.mockReset().mockResolvedValue(respuestaIa(20, true));
+    expect(await sugerirPartidas(DESCRIPCION)).toMatchObject({ repetida: false });
+    expect(llamadas("guardar_propuesta_ia")).toHaveLength(1);
+    expect(estado.guardadas.get(clave)).toEqual(mala);
+  });
+
+  it.each([
+    ["sin reserva válida (TJ005)", "TJ005"],
+    ["la guardada es de otro autor y no es admin (TJ006, 0010)", "TJ006"],
+  ])("si no se puede guardar (%s), el usuario tiene su propuesta igualmente", async (_, codigo) => {
+    estado.errorGuardar = { message: codigo };
     const r = await sugerirPartidas(DESCRIPCION);
     expect(r).toMatchObject({ repetida: false, quedan: 14 });
     if (r.error !== undefined) throw new Error(r.error);

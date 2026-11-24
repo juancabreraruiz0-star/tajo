@@ -1,6 +1,7 @@
-// Caché de propuestas de «Montar con IA» (0009, D14): misma descripción y mismo almacén → la misma propuesta.
+// Caché de propuestas del Asistente Tajo (0009, 0010, D14): misma descripción y mismo almacén → la misma propuesta.
 // Solo se escribe con guardar_propuesta_ia(), que exige y gasta una reserva de consumir_uso_ia() propia, reciente y sin
-// usar; cada empresa lee solo las suyas; anon no tiene nada.
+// usar; una propuesta guardada solo la sustituye su autor o un admin de la empresa (0010); cada empresa lee solo las
+// suyas; anon no tiene nada.
 
 import type { Transaction } from "@electric-sql/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -45,6 +46,7 @@ describe("permisos", () => {
     expect(codigo(await base.filas("anon", "select * from ia_propuestas"))).toBe("42501");
     expect(codigo(await base.filas("anon", GUARDAR, [crypto.randomUUID(), CLAVE, JSON.stringify(PROPUESTA), false]))).toBe("42501");
     expect(codigo(await base.filas("anon", "select ia_propuesta_valida('{}'::jsonb)"))).toBe("42501");
+    expect(codigo(await base.filas("anon", "select ia_propuesta_sustituible(null)"))).toBe("42501");
   });
 
   it("nadie escribe en la tabla directamente, ni gerencia", async () => {
@@ -62,6 +64,7 @@ describe("permisos", () => {
       expect(codigo(await base.filas(quien, "update ia_propuestas set respuesta = '{}'"))).toBe("42501");
       expect(codigo(await base.filas(quien, "delete from ia_propuestas"))).toBe("42501");
       expect(codigo(await base.filas(quien, "select ia_propuesta_valida('{}'::jsonb)"))).toBe("42501");
+      expect(codigo(await base.filas(quien, "select ia_propuesta_sustituible($1)", [quien]))).toBe("42501");
     }
   });
 
@@ -146,25 +149,102 @@ describe("guardar_propuesta_ia", () => {
     expect(valor(r)).toEqual({ primera: "ok", otraVez: "TJ005", otraClave: "TJ005", guardadas: [{ clave: CLAVE, respuesta: PROPUESTA }] });
   });
 
-  it("si ya hay una con esa clave se queda la primera (y es la que devuelve); con p_sustituir se cambia", async () => {
+  it("si ya hay una con esa clave se queda la primera (y es la que devuelve), también para otro compañero", async () => {
     const r = await base.como("postgres", async (tx) => {
       await ser(tx, OBRA);
       valor(await guardar(tx, await reservar(tx)));
       await ser(tx, OBRA2);
       const segunda = valor(await guardar(tx, await reservar(tx), CLAVE, OTRA))[0].g;
       const leida = (await unaEn(tx, "select respuesta from ia_propuestas where clave = $1", [CLAVE])).respuesta;
-      const sustituida = valor(await guardar(tx, await reservar(tx), CLAVE, OTRA, true))[0].g;
       await ser(tx, "postgres");
       const fila = await unaEn(tx, "select perfil_id, respuesta from ia_propuestas where clave = $1", [CLAVE]);
-      return { segunda, leida, sustituida, fila, usos: await usosHoy(tx, E1) };
+      return { segunda, leida, fila, usos: await usosHoy(tx, E1) };
     });
     expect(valor(r)).toEqual({
       segunda: PROPUESTA,
       leida: PROPUESTA,
-      sustituida: OTRA,
-      fila: { perfil_id: OBRA2, respuesta: OTRA },
+      fila: { perfil_id: OBRA, respuesta: PROPUESTA },
       // Cada guardado ha gastado su uso, también el que no ha cambiado nada.
-      usos: 3,
+      usos: 2,
+    });
+  });
+
+  it("con p_sustituir solo la cambia su autor o un admin de la empresa (0010); a otro compañero le da TJ006 sin gastar su reserva", async () => {
+    const r = await base.como("postgres", async (tx) => {
+      await ser(tx, OBRA);
+      valor(await guardar(tx, await reservar(tx)));
+      // Otro empleado de la misma empresa no puede sustituirla.
+      await ser(tx, OBRA2);
+      const reservaCompanero = await reservar(tx);
+      const companero = await guardar(tx, reservaCompanero, CLAVE, OTRA, true);
+      await ser(tx, "postgres");
+      const trasCompanero = await unaEn(tx, "select perfil_id, respuesta from ia_propuestas where clave = $1", [CLAVE]);
+      const quedaReservaCompanero = (await en(tx, "select 1 from uso_ia_reservas where id = $1", [reservaCompanero])).length;
+      // El autor sí.
+      await ser(tx, OBRA);
+      const autor = valor(await guardar(tx, await reservar(tx), CLAVE, OTRA, true))[0].g;
+      // Y gerencia (admin) también; desde entonces la autora es ella.
+      await ser(tx, GER);
+      const admin = valor(await guardar(tx, await reservar(tx), CLAVE, PROPUESTA, true))[0].g;
+      await ser(tx, OBRA);
+      const exAutor = await guardar(tx, await reservar(tx), CLAVE, OTRA, true);
+      await ser(tx, "postgres");
+      const final = await unaEn(tx, "select perfil_id, respuesta from ia_propuestas where clave = $1", [CLAVE]);
+      return {
+        companero: codigo(companero),
+        mensaje: error(companero),
+        trasCompanero,
+        quedaReservaCompanero,
+        autor,
+        admin,
+        exAutor: codigo(exAutor),
+        final,
+      };
+    });
+    expect(valor(r)).toEqual({
+      companero: "TJ006",
+      mensaje: "Solo quien guardó esta propuesta o un administrador de la empresa puede sustituirla.",
+      trasCompanero: { perfil_id: OBRA, respuesta: PROPUESTA },
+      quedaReservaCompanero: 1,
+      autor: OTRA,
+      admin: PROPUESTA,
+      exAutor: "TJ006",
+      final: { perfil_id: GER, respuesta: PROPUESTA },
+    });
+  });
+
+  it("una propuesta sin autor solo la sustituye un admin; sin p_sustituir sigue devolviendo la guardada a cualquiera", async () => {
+    const r = await base.como("postgres", async (tx) => {
+      await ser(tx, OBRA);
+      valor(await guardar(tx, await reservar(tx)));
+      await ser(tx, "postgres");
+      await en(tx, "update ia_propuestas set perfil_id = null where clave = $1", [CLAVE]);
+      await ser(tx, OBRA);
+      const empleado = codigo(await guardar(tx, await reservar(tx), CLAVE, OTRA, true));
+      const sinSustituir = valor(await guardar(tx, await reservar(tx), CLAVE, OTRA))[0].g;
+      await ser(tx, GER);
+      const admin = valor(await guardar(tx, await reservar(tx), CLAVE, OTRA, true))[0].g;
+      await ser(tx, "postgres");
+      return { empleado, sinSustituir, admin, autor: (await unaEn(tx, "select perfil_id from ia_propuestas where clave = $1", [CLAVE])).perfil_id };
+    });
+    expect(valor(r)).toEqual({ empleado: "TJ006", sinSustituir: PROPUESTA, admin: OTRA, autor: GER });
+  });
+
+  it("el admin de otra empresa no toca las de esta: con la misma clave guarda la suya", async () => {
+    const r = await base.como("postgres", async (tx) => {
+      await ser(tx, OBRA);
+      valor(await guardar(tx, await reservar(tx)));
+      await ser(tx, GER2);
+      const suya = valor(await guardar(tx, await reservar(tx), CLAVE, OTRA, true))[0].g;
+      await ser(tx, "postgres");
+      return { suya, filas: await en(tx, "select empresa_id, perfil_id, respuesta from ia_propuestas order by empresa_id") };
+    });
+    expect(valor(r)).toEqual({
+      suya: OTRA,
+      filas: [
+        { empresa_id: E1, perfil_id: OBRA, respuesta: PROPUESTA },
+        { empresa_id: E2, perfil_id: GER2, respuesta: OTRA },
+      ],
     });
   });
 

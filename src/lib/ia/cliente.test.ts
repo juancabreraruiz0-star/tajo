@@ -25,6 +25,7 @@ vi.mock("@anthropic-ai/sdk", async (importOriginal) => {
 
 const SDK = await vi.importActual<typeof import("@anthropic-ai/sdk")>("@anthropic-ai/sdk");
 const { MENSAJES_IA, pedirPartidasIa } = await import("./cliente");
+const { PETICION_IA, VERSION_PETICION_IA, mensajeIa } = await import("./prompt");
 
 const cabeceras = () => new Headers();
 const respuesta = (extra: Record<string, unknown>) => ({
@@ -62,19 +63,61 @@ describe("pedirPartidasIa · petición", () => {
     expect(typeof params.system).toBe("string");
     expect(params.messages).toEqual([{ role: "user", content: expect.stringContaining("Reforma de baño de 6 m²") }]);
   });
+
+  it("envía exactamente PETICION_IA más el mensaje: lo mismo de lo que sale la clave de la caché (D14)", async () => {
+    create.mockResolvedValue(respuesta({ content: [texto(JSON_BUENO)] }));
+    await pedirPartidasIa("Reforma de baño de 6 m²", []);
+    const { messages, ...resto } = create.mock.calls[0][0] as Record<string, unknown>;
+    expect(resto).toEqual(PETICION_IA);
+    expect(messages).toEqual([{ role: "user", content: mensajeIa("Reforma de baño de 6 m²", []) }]);
+    // La versión de la caché recoge todos los parámetros de la llamada, también effort, max_tokens y fallbacks.
+    expect(JSON.parse(VERSION_PETICION_IA)).toEqual(JSON.parse(JSON.stringify(resto)));
+    expect(JSON.parse(VERSION_PETICION_IA)).toMatchObject({
+      max_tokens: 16000,
+      fallbacks: "default",
+      output_config: { effort: "medium" },
+    });
+  });
 });
 
 describe("pedirPartidasIa · respuestas", () => {
-  it("respuesta normal: devuelve el JSON parseado", async () => {
+  it("respuesta normal: devuelve el JSON parseado y no es de respaldo", async () => {
     create.mockResolvedValue(respuesta({ content: [texto(JSON_BUENO)] }));
-    expect(await pedirPartidasIa("Reforma de baño", [])).toEqual({ ok: true, datos: JSON.parse(JSON_BUENO) });
+    expect(await pedirPartidasIa("Reforma de baño", [])).toEqual({ ok: true, datos: JSON.parse(JSON_BUENO), deRespaldo: false });
   });
 
-  it("con un fallback: vale el último bloque de texto", async () => {
+  it("con iteraciones normales (sin fallback_message) tampoco es de respaldo", async () => {
     create.mockResolvedValue(
-      respuesta({ content: [{ type: "fallback", from: { model: "a" }, to: { model: "b" } }, texto(JSON_BUENO)] }),
+      respuesta({
+        content: [texto(JSON_BUENO)],
+        usage: { input_tokens: 1, output_tokens: 1, iterations: [{ type: "message", input_tokens: 1, output_tokens: 1 }] },
+      }),
     );
-    expect(await pedirPartidasIa("Reforma de baño", [])).toMatchObject({ ok: true });
+    expect(await pedirPartidasIa("Reforma de baño", [])).toMatchObject({ ok: true, deRespaldo: false });
+  });
+
+  it("el id canónico con fecha del modelo pedido no es de respaldo (si no, no se guardaría nunca nada)", async () => {
+    create.mockResolvedValue(respuesta({ model: "claude-opus-5-5-20261001", content: [texto(JSON_BUENO)] }));
+    expect(await pedirPartidasIa("Reforma de baño", [])).toMatchObject({ ok: true, deRespaldo: false });
+  });
+
+  it("con un fallback a mitad: vale el último bloque de texto y es de respaldo", async () => {
+    create.mockResolvedValue(
+      respuesta({
+        model: "claude-opus-5",
+        content: [{ type: "fallback", from: { model: "claude-opus-5-5" }, to: { model: "claude-opus-5" } }, texto(JSON_BUENO)],
+      }),
+    );
+    expect(await pedirPartidasIa("Reforma de baño", [])).toEqual({ ok: true, datos: JSON.parse(JSON_BUENO), deRespaldo: true });
+  });
+
+  it.each([
+    ["usage.iterations con fallback_message (respaldo desde el principio, sin bloque)", { usage: { input_tokens: 1, output_tokens: 1, iterations: [{ type: "fallback_message", model: "claude-opus-5", input_tokens: 1, output_tokens: 1 }] } }],
+    ["otro model en la respuesta", { model: "claude-opus-5" }],
+    ["un bloque fallback aunque model sea el principal", { content: [{ type: "fallback", from: { model: "a" }, to: { model: "b" } }, texto(JSON_BUENO)] }],
+  ])("%s: es de respaldo", async (_, extra) => {
+    create.mockResolvedValue(respuesta({ content: [texto(JSON_BUENO)], ...extra }));
+    expect(await pedirPartidasIa("Reforma de baño", [])).toMatchObject({ ok: true, deRespaldo: true });
   });
 
   it("refusal: mensaje propio y el uso no se devuelve", async () => {

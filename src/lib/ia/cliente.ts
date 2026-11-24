@@ -3,10 +3,18 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import type { MaterialAlmacen } from "@/lib/domain/sugerencias";
-import { ESQUEMA_IA, INSTRUCCIONES_IA, MODELO_IA, mensajeIa } from "./prompt";
+import { MODELO_IA, PETICION_IA, mensajeIa } from "./prompt";
 
 export type RespuestaIa =
-  | { ok: true; datos: unknown }
+  | {
+      ok: true;
+      datos: unknown;
+      /**
+       * true si ha respondido un modelo de respaldo (fallback) y no MODELO_IA: la propuesta vale para el usuario, pero
+       * no se guarda en la caché (D14), que solo guarda respuestas del modelo de la clave.
+       */
+      deRespaldo: boolean;
+    }
   | {
       ok: false;
       error: string;
@@ -65,6 +73,21 @@ function errorDe(error: unknown): { error: string; devolver: boolean } {
 }
 
 /**
+ * ¿Ha respondido un modelo de respaldo? Lo dice la entrada fallback_message de usage.iterations (también en los turnos
+ * en que el respaldo responde desde el principio, que no traen bloque fallback); por si acaso, también un bloque
+ * fallback en el contenido o un model distinto de MODELO_IA. El model se compara sin un posible sufijo de fecha
+ * (-AAAAMMDD): la API puede devolver el id canónico del modelo pedido y eso no es un respaldo (si lo contara, no se
+ * guardaría nunca nada).
+ */
+function deRespaldo(respuesta: Anthropic.Beta.BetaMessage): boolean {
+  return (
+    respuesta.model.replace(/-\d{8}$/, "") !== MODELO_IA ||
+    (respuesta.usage.iterations ?? []).some((i) => i.type === "fallback_message") ||
+    respuesta.content.some((b) => b.type === "fallback")
+  );
+}
+
+/**
  * Pide a Claude las partidas para la obra descrita. Devuelve el JSON parseado (sin validar: eso lo hace
  * validarSugerencia del dominio) o un error legible. Nunca lanza.
  */
@@ -72,12 +95,7 @@ export async function pedirPartidasIa(descripcion: string, materiales: readonly 
   let respuesta: Anthropic.Beta.BetaMessage;
   try {
     respuesta = await getCliente().beta.messages.create({
-      model: MODELO_IA,
-      max_tokens: 16000,
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
-      output_config: { effort: "medium", format: { type: "json_schema", schema: ESQUEMA_IA } },
-      system: INSTRUCCIONES_IA,
+      ...PETICION_IA,
       messages: [{ role: "user", content: mensajeIa(descripcion, materiales) }],
     });
   } catch (error) {
@@ -94,7 +112,7 @@ export async function pedirPartidasIa(descripcion: string, materiales: readonly 
   const texto = respuesta.content.filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text").at(-1)?.text;
   if (!texto) return { ok: false, error: MENSAJES_IA.ilegible, devolver: false };
   try {
-    return { ok: true, datos: JSON.parse(texto) as unknown };
+    return { ok: true, datos: JSON.parse(texto) as unknown, deRespaldo: deRespaldo(respuesta) };
   } catch {
     return { ok: false, error: MENSAJES_IA.ilegible, devolver: false };
   }

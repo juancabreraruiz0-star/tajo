@@ -1,7 +1,7 @@
 // Tajo · tests de la base de datos contra el Supabase real (npm run test:db). No forman parte de `npm test`.
 //
 // Entra como anónimo, como obra (empleado) y como gerencia (admin) y comprueba qué puede y qué no puede hacer cada
-// uno: RLS, triggers y funciones de 0001–0009. Necesita la base migrada hasta 0009 y el seed recién ejecutado.
+// uno: RLS, triggers y funciones de 0001–0010. Necesita la base migrada hasta 0010 y el seed recién ejecutado.
 // Lo mismo, y bastante más, se comprueba sin Supabase ni contraseñas con `npm run test:pglite` (tests/db/).
 //
 // Configuración:

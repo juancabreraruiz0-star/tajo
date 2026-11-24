@@ -1,5 +1,5 @@
 -- Tajo · 0009_ia_cache.sql — «Montar con IA»: misma descripción, mismo presupuesto (D14, tarea T19).
--- Orden de ejecución: 0001 → 0002 → 0003 → 0004 → 0005 → 0006 → 0007 → 0008 → este fichero → seed.sql (el seed lo
+-- Orden de ejecución: 0001 → 0002 → 0003 → 0004 → 0005 → 0006 → 0007 → 0008 → este fichero → 0010 → seed.sql (el seed lo
 -- necesita: limpia la tabla nueva de las empresas de demo).
 -- Cómo se ejecuta: Supabase → SQL Editor (rol postgres) → pegar este fichero entero → Run. Va entre begin y commit: si
 -- algo falla, no se aplica nada. Solo añade una tabla y una función: no toca datos existentes. Se puede volver a

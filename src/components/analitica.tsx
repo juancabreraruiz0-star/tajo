@@ -3,11 +3,12 @@
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 
-/** Sustituye el token del enlace público del presupuesto por «[token]» y quita la query. */
+/** Sustituye el token del enlace público del presupuesto por «[token]» y quita la query y el fragmento. */
 function urlSinToken(url: string): string {
   const u = new URL(url);
   u.pathname = u.pathname.replace(/^\/p\/[^/]+/, "/p/[token]");
   u.search = "";
+  u.hash = "";
   return u.toString();
 }
 

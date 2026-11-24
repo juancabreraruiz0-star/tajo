@@ -55,10 +55,25 @@ export const ESQUEMA_IA = {
 } as const;
 
 /**
- * Versión de la petición a la IA (D14): modelo, instrucciones y esquema. Entra en la clave de la caché de propuestas:
- * si cambia cualquiera de los tres, la misma descripción se vuelve a pedir en vez de servir la propuesta guardada.
+ * Todo lo de la petición a Claude que no es el mensaje del usuario: modelo, límite de salida, respaldo (fallbacks),
+ * esfuerzo, esquema e instrucciones. cliente.ts lo envía tal cual (más messages), y es también de lo que sale
+ * VERSION_PETICION_IA: así la clave de la caché no se puede desincronizar de la llamada.
  */
-export const VERSION_PETICION_IA = JSON.stringify([MODELO_IA, INSTRUCCIONES_IA, ESQUEMA_IA]);
+export const PETICION_IA = {
+  model: MODELO_IA,
+  max_tokens: 16000,
+  betas: ["server-side-fallback-2026-07-01"],
+  fallbacks: "default" as const,
+  output_config: { effort: "medium" as const, format: { type: "json_schema" as const, schema: ESQUEMA_IA } },
+  system: INSTRUCCIONES_IA,
+};
+
+/**
+ * Versión de la petición a la IA (D14): PETICION_IA entera. Entra en la clave de la caché de propuestas: si cambia
+ * cualquier parámetro (modelo, max_tokens, fallbacks, effort, esquema o instrucciones), la misma descripción se vuelve
+ * a pedir en vez de servir la propuesta guardada.
+ */
+export const VERSION_PETICION_IA = JSON.stringify(PETICION_IA);
 
 /** Precio para mostrar a la IA (dato, no cálculo): 2475 → 24.75. */
 function precioEuros(cents: number): number {

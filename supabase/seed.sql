@@ -3,7 +3,7 @@
 --   1) Aplicar, en este orden, en el SQL Editor (rol postgres): migrations/0001_esquema.sql →
 --      migrations/0002_reglas.sql → migrations/0003_guardar_presupuesto.sql → migrations/0004_auditoria.sql →
 --      migrations/0005_uso_ia.sql → migrations/0006_obras.sql → migrations/0007_auditoria2.sql →
---      migrations/0008_auditoria3.sql → migrations/0009_ia_cache.sql.
+--      migrations/0008_auditoria3.sql → migrations/0009_ia_cache.sql → migrations/0010_ia_cache_autor.sql.
 --   2) Crear en Authentication → Add user a gerencia@reformaslevante.es y obra@reformaslevante.es (si no existen).
 --   3) SQL Editor → pegar este fichero entero → Run (el SQL Editor lo ejecuta todo en una sola transacción).
 -- Es reejecutable: borra antes los datos de demo de las dos empresas (también obras y partes) y reinicia su
@@ -37,6 +37,9 @@ begin
   end if;
   if to_regclass('public.ia_propuestas') is null then
     raise exception 'Falta aplicar migrations/0009_ia_cache.sql antes del seed.';
+  end if;
+  if to_regprocedure('public.ia_propuesta_sustituible(uuid)') is null then
+    raise exception 'Falta aplicar migrations/0010_ia_cache_autor.sql antes del seed.';
   end if;
 end;
 $$;

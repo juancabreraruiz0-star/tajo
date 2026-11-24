@@ -1,7 +1,7 @@
 -- Tajo · 0001_esquema.sql — tablas, RLS, numeración, funciones públicas y de facturación.
 -- Cómo se ejecuta: Supabase → SQL Editor → pegar este fichero entero → Run (una sola vez, antes de crear usuarios).
 -- Después, en este orden: migrations/0002_reglas.sql → migrations/0003_guardar_presupuesto.sql → seed.sql.
--- Orden completo: 0001 → 0002 → 0003 → 0004 → 0005 → 0006 → 0007 → 0008 → 0009_ia_cache.sql → seed.sql.
+-- Orden completo: 0001 → 0002 → 0003 → 0004 → 0005 → 0006 → 0007 → 0008 → 0009 → 0010_ia_cache_autor.sql → seed.sql.
 -- La primera ejecución es la buena. Está escrito con if not exists / create or replace / drop ... if exists, pero
 -- re-ejecutarlo puede fallar en el trigger de auth.users (drop/create trigger on_auth_user_created) por los permisos
 -- que Supabase da sobre el esquema auth; si hay que cambiar algo, mejor una migración nueva.

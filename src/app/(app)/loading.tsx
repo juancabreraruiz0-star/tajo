@@ -4,7 +4,7 @@
  */
 export default function Cargando() {
   return (
-    <div role="status" aria-live="polite" aria-busy="true">
+    <div role="status" aria-live="polite">
       <span className="sr-only">Cargando…</span>
       <div aria-hidden="true" className="animate-pulse">
         <header className="mb-6 sm:mb-8">

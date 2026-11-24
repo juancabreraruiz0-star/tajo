@@ -33,7 +33,9 @@ export function StatCard({ id, title, value, icon, tone = "default", detail, chi
   return (
     <Card
       className={cn(
-        "flex flex-col transition-[box-shadow,transform] duration-200 ease-out hover:shadow-elevada motion-safe:hover:-translate-y-0.5",
+        "flex flex-col",
+        // Solo se eleva al pasar el ratón si lleva enlace: una tarjeta sin enlace no se puede pulsar.
+        link && "transition-[box-shadow,transform] duration-200 ease-out hover:shadow-elevada motion-safe:hover:-translate-y-0.5",
         className,
       )}
     >
