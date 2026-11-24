@@ -52,6 +52,11 @@ export interface Material {
   stock: number;
   /** numeric: admite decimales. */
   stock_minimo: number;
+  /**
+   * Lo que le cuesta a la empresa, sin IVA (0006): lo copian los partes de obra. null = se usa precio_cents. Solo lo
+   * pone o cambia gerencia (trigger materiales_coste_solo_gerencia).
+   */
+  coste_cents: number | null;
 }
 
 export interface Presupuesto {
@@ -74,12 +79,27 @@ export interface Presupuesto {
   // Evidencia (0007, D12). La pone la base de datos; no se envía nunca desde la app.
   /** Nombre que escribió el cliente al aceptar por el enlace; null en los demás casos (y en los aceptados antes de 0007). */
   aceptado_nombre: string | null;
-  /** IP desde la que se aceptó por el enlace (como mucho 64 caracteres); la manda el servidor, no es una prueba. */
-  aceptado_ip: string | null;
-  /** Navegador desde el que se aceptó por el enlace (como mucho 400 caracteres). */
-  aceptado_user_agent: string | null;
   /** Perfil que lo pasó a enviado; null si sigue en borrador, se envió antes de 0007 o se borró el usuario. */
   enviado_por: Uuid | null;
+  /**
+   * Copia del nombre de quien lo envió, tomada al enviarlo (0008, D13): no cambia aunque luego cambie su perfil o se
+   * borre el usuario. null si sigue en borrador o no se sabe quién lo envió.
+   */
+  enviado_por_nombre: string | null;
+}
+
+/**
+ * IP y navegador de la aceptación por enlace (tabla presupuesto_aceptaciones, 0008, D13). Solo los lee gerencia; los
+ * escribe aceptar_presupuesto(). Los manda el servidor de la app: son una constancia razonable, no una prueba.
+ */
+export interface PresupuestoAceptacion {
+  presupuesto_id: Uuid;
+  empresa_id: Uuid;
+  /** Como mucho 64 caracteres. */
+  ip: string | null;
+  /** Como mucho 400 caracteres. */
+  user_agent: string | null;
+  created_at: Timestamp;
 }
 
 export type CanalAceptacion = "enlace" | "interno";
@@ -143,16 +163,6 @@ export interface FacturaLinea {
 // ----------------------------------------------------------------------------
 // Obras (0006, D11)
 // ----------------------------------------------------------------------------
-
-/** Columna de empresas añadida en 0006: coste de una hora de mano de obra (se copia en cada parte). */
-export interface EmpresaCosteHora {
-  coste_hora_cents: number;
-}
-
-/** Columna de materiales añadida en 0006: lo que le cuesta a la empresa; null = se usa precio_cents. */
-export interface MaterialCoste {
-  coste_cents: number | null;
-}
 
 export interface Obra {
   id: Uuid;

@@ -84,7 +84,7 @@ describe("aceptar_presupuesto (solo anon)", () => {
   it("con la validez vencida no lo acepta ni el cliente ni gerencia", async () => {
     const r = await base.como("postgres", async (tx) => {
       await en(tx, "select set_config('tajo.seed', 'on', true)");
-      await en(tx, "update presupuestos set created_at = now() - interval '400 days' where id = $1", [SEED.presupuestoEnviado]);
+      await en(tx, "update presupuestos set created_at = now() - interval '401 days', enviado_at = now() - interval '400 days' where id = $1", [SEED.presupuestoEnviado]);
       await en(tx, "select set_config('tajo.seed', 'off', true)");
       const t = (await unaEn(tx, "select token from presupuestos where id = $1", [SEED.presupuestoEnviado])).token;
       await ser(tx, "anon");

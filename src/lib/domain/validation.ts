@@ -113,7 +113,7 @@ export function validateCliente(raw: RawForm<ClienteField>): ValidationResult<Cl
 // Materiales (R15)
 // ----------------------------------------------------------------------------
 
-export type MaterialField = "nombre" | "unidad" | "precio" | "stock" | "stock_minimo";
+export type MaterialField = "nombre" | "unidad" | "precio" | "coste" | "stock" | "stock_minimo";
 
 export interface MaterialInput {
   nombre: string;
@@ -121,6 +121,11 @@ export interface MaterialInput {
   precio_cents: number;
   stock: number;
   stock_minimo: number;
+  /**
+   * Coste para la empresa, sin IVA (null = sin coste: los partes usan el precio). Solo está si se valida con
+   * conCoste (gerencia); si no, no se envía y la base de datos no lo toca.
+   */
+  coste_cents?: number | null;
 }
 
 export const LIMITES_MATERIAL = { nombre: 120, unidad: 20 } as const;
@@ -143,6 +148,16 @@ function parsePrecio(valor: unknown): { valor: number; error?: string } {
   if (precio.error) return precio;
   if (precio.valor > MAX_PRECIO_CENTS) return { valor: 0, error: "El precio es demasiado alto." };
   return precio;
+}
+
+/** Coste del material: opcional (vacío = null) y con los mismos límites que el precio. */
+function parseCoste(valor: unknown): { valor: number | null; error?: string } {
+  const texto = text(valor);
+  if (texto === "") return { valor: null };
+  const coste = parseOr<number | null>(() => eurosToCents(texto), null);
+  if (coste.error) return coste;
+  if ((coste.valor ?? 0) > MAX_PRECIO_CENTS) return { valor: null, error: "El coste es demasiado alto." };
+  return coste;
 }
 
 function parseCantidadCampo(valor: unknown): { valor: number; error?: string } {
@@ -170,15 +185,18 @@ function parseStock(valor: unknown, stockActual: number | undefined): { valor: n
 export interface MaterialOptions {
   /** Al editar: el stock que el material tiene ahora en la base de datos. */
   stockActual?: number;
+  /** Validar también el coste (solo gerencia lo ve y lo puede cambiar; trigger materiales_coste_solo_gerencia). */
+  conCoste?: boolean;
 }
 
 export function validateMaterial(
   raw: RawForm<MaterialField>,
-  { stockActual }: MaterialOptions = {},
+  { stockActual, conCoste = false }: MaterialOptions = {},
 ): ValidationResult<MaterialField, MaterialInput> {
   const nombre = text(raw.nombre);
   const unidad = text(raw.unidad);
   const precio = parsePrecio(raw.precio);
+  const coste = conCoste ? parseCoste(raw.coste) : null;
   // Stock y mínimo vacíos cuentan como 0.
   const stock = parseStock(raw.stock, stockActual);
   const stockMinimo = parseCantidadCampo(raw.stock_minimo);
@@ -188,10 +206,18 @@ export function validateMaterial(
       nombre: nombre === "" ? "El nombre es obligatorio." : tooLong(nombre, LIMITES_MATERIAL.nombre),
       unidad: unidad === "" ? "Indica la unidad (ud, m², kg…)." : tooLong(unidad, LIMITES_MATERIAL.unidad),
       precio: precio.error,
+      coste: coste?.error,
       stock: stock.error,
       stock_minimo: stockMinimo.error,
     },
-    { nombre, unidad, precio_cents: precio.valor, stock: stock.valor, stock_minimo: stockMinimo.valor },
+    {
+      nombre,
+      unidad,
+      precio_cents: precio.valor,
+      stock: stock.valor,
+      stock_minimo: stockMinimo.valor,
+      ...(coste ? { coste_cents: coste.valor } : {}),
+    },
   );
 }
 

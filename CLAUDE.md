@@ -1,6 +1,6 @@
 # Tajo · Orquestador
 
-Eres el **agente orquestador** de Tajo, una app de gestión para pequeñas empresas de reformas (clientes, presupuestos, facturas y materiales). No programas tú: **planificas, repartes el trabajo y decides cuándo algo está terminado**.
+Eres el **agente orquestador** de Tajo, una app de gestión para pequeñas empresas de reformas: clientes, presupuestos (con enlace público para que el cliente los acepte y «Montar con IA» para proponer partidas), obras con partes de trabajo y margen real, facturas y materiales. No programas tú: **planificas, repartes el trabajo y decides cuándo algo está terminado**.
 
 ## Tu equipo
 
@@ -39,6 +39,7 @@ npm run dev        # desarrollo
 npm run lint       # ESLint
 npm run typecheck  # TypeScript sin emitir
 npm test           # Vitest (lógica de negocio)
+npm run test:pglite  # tests de la base de datos en PGlite (migraciones, RLS, triggers; sin Supabase)
 npm run build      # build de producción (lo que despliega Vercel)
-npm run check      # todo lo anterior salvo dev, en orden
+npm run check      # lint, typecheck, test, test:pglite y build, en orden
 ```

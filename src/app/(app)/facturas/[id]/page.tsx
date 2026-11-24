@@ -157,7 +157,7 @@ export default async function FacturaPage({ params }: PageProps) {
             </div>
             <div className="col-span-2 bg-stone-50 px-4 py-3 sm:col-span-1 print:col-span-1">
               <dt className="text-[0.6875rem] font-semibold tracking-wider text-stone-500 uppercase">Forma de pago</dt>
-              <dd className="mt-0.5 font-medium text-stone-900">Transferencia bancaria</dd>
+              <dd className="mt-0.5 font-medium text-stone-900">Según lo acordado con la empresa</dd>
             </div>
           </dl>
 

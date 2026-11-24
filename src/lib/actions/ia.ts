@@ -14,7 +14,8 @@ export type SugerenciaIaState =
       supuestos: string[];
       /** Partidas propuestas que no se han añadido por no ser válidas. */
       descartadas: number;
-      /** Propuestas con IA que le quedan hoy a la empresa. */
+      /** Propuestas con IA que le quedan hoy a este usuario: el menor de lo que le queda de su cuota (15) y de la de
+       * la empresa (40), como lo calcula consumir_uso_ia() de 0007. */
       quedan: number;
       error?: undefined;
     }

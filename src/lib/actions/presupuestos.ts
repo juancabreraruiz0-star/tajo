@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { getSessionProfile, isAdmin, type SupabaseServerClient } from "@/lib/auth";
 import { dbErrorMessage, isClienteSinNif } from "@/lib/domain/errors";
 import {
+  envioError,
   isExpired,
   validatePresupuesto,
   type PartidaField,
@@ -168,17 +169,23 @@ export async function cambiarEstado(id: string, destino: Destino): Promise<Accio
   const { perfil, supabase } = await getSessionProfile();
   const { data: actual, error } = await supabase
     .from("presupuestos")
-    .select("estado, cliente_id, created_at, validez_dias")
+    .select("estado, cliente_id, created_at, enviado_at, validez_dias")
     .eq("id", id)
-    .maybeSingle<{ estado: EstadoPresupuesto; cliente_id: string; created_at: string; validez_dias: number }>();
+    .maybeSingle<{
+      estado: EstadoPresupuesto;
+      cliente_id: string;
+      created_at: string;
+      enviado_at: string | null;
+      validez_dias: number;
+    }>();
   if (error) return { error: dbErrorMessage(error) };
   if (!actual) return { error: "El presupuesto no existe o no tienes acceso a él." };
   if (!canTransition(actual.estado, destino)) {
     return { error: `No se puede pasar un presupuesto de «${actual.estado}» a «${destino}».` };
   }
   if (destino === "aceptado") {
-    // Aceptación interna (D9): solo gerencia y con la validez vigente. El trigger de 0004 lo impone también.
-    const vencido = isExpired(actual.created_at, actual.validez_dias);
+    // Aceptación interna (D9): solo gerencia y con la validez vigente (desde el envío, D13). El trigger lo impone también.
+    const vencido = isExpired(actual, actual.validez_dias);
     if (!canMarkAccepted(perfil.rol, vencido)) {
       return {
         error: vencido
@@ -188,12 +195,18 @@ export async function cambiarEstado(id: string, destino: Destino): Promise<Accio
     }
   }
   if (destino === "enviado") {
-    // La base de datos también lo impide (0003); aquí se da el mensaje antes de intentarlo.
-    const { count, error: errorPartidas } = await supabase
-      .from("presupuesto_lineas")
-      .select("id", { count: "exact", head: true })
-      .eq("presupuesto_id", id);
-    if (errorPartidas || !count) return { error: "Añade al menos una partida antes de enviarlo." };
+    // La base de datos también lo impide (0003 y 0008); aquí se da el mensaje antes de intentarlo.
+    const { data: totales, error: errorTotales } = await supabase
+      .from("presupuestos_con_totales")
+      .select("num_partidas, total_cents")
+      .eq("id", id)
+      .maybeSingle<{ num_partidas: number; total_cents: number | string }>();
+    if (errorTotales) return { error: dbErrorMessage(errorTotales) };
+    const motivo = envioError({
+      numPartidas: totales?.num_partidas ?? 0,
+      totalCents: Number(totales?.total_cents ?? 0),
+    });
+    if (motivo) return { error: motivo };
   }
 
   const { data, error: errorUpdate } = await supabase

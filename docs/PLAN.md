@@ -26,6 +26,7 @@ Gestionado por el orquestador. Cada tarea pasa por develop → testing hasta `AP
 | T16b | Obras · pantallas (D11) junto con T15 | R19 · D11 | ✅ aprobado (2026-11-24, 1.ª vuelta). Testing ejecutó en PGlite las mismas consultas de las pantallas como encargado y gerencia (35/35) |
 | T17a | Segunda auditoría · base de datos (D12): 0007, tests PGlite en el repo y CI | todos · D12 | ✅ aprobado (2026-11-24, 2.ª vuelta: la 1.ª dejaba pasar cantidades como texto). PGlite en el repo: 106 tests; CI en GitHub Actions |
 | T17b | Segunda auditoría · aplicación (D12): aceptación con nombre y evidencia, semáforo para el empleado, detalles de testing, README | todos · D12 | ✅ aprobado (2026-11-24), con un retoque final del README y del nombre al aceptar comprobado por el orquestador |
+| T18 | Tercera auditoría (`docs/AUDITORIA-3.md`, D13): 0008 (validez desde el envío, sin envíos de 0 €, nombre de quien envió fijo, IP y navegador solo para gerencia), coste del material en el formulario, pantallas de error en español, factura sin IBAN, seed con contactos ficticios, código muerto, vitest 5 y documentación | R6, R9–R11, R13, R15 · D13 | ✅ aprobado (2026-11-24, 1.ª vuelta). Testing probó la 0008 en PGlite sobre 0001–0007 + el seed de 69935c1 con actividad (sin pérdida de datos, repetible, seed nuevo después) y cambió en la 0008 los caracteres invisibles literales de las expresiones regulares por los mismos escapes que en la 0007 |
 
 ## Sugerencias de testing resueltas en T10a/T10b
 

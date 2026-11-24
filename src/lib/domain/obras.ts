@@ -4,7 +4,6 @@
 
 import { parseQuantity, quantityToInput } from "./quantity";
 import type { Rol } from "./status";
-import { lineTotalCents } from "./totals";
 import { isUuid, text, type FieldErrors, type ValidationResult } from "./validation";
 
 // ----------------------------------------------------------------------------
@@ -110,47 +109,9 @@ export function diaMadrid(valor: Date | string): string {
 }
 
 // ----------------------------------------------------------------------------
-// Coste real, margen y % consumido (misma regla que la vista obras_resumen)
-//   mano de obra de un parte = round(horas × coste/hora); material = round(cantidad × coste unitario);
-//   coste real = Σ mano de obra + Σ materiales; margen = presupuestado (base sin IVA) − coste real;
+// % consumido (misma regla que la vista obras_resumen, que calcula el coste real y el margen en SQL)
 //   consumido = coste real / presupuestado × 100, con 1 decimal (medio hacia arriba); null si presupuestado = 0.
 // ----------------------------------------------------------------------------
-
-export interface MaterialConCoste {
-  /** numeric(13,3) */
-  cantidad: number;
-  /** Coste unitario copiado al añadirlo al parte. */
-  costeUnitCents: number;
-}
-
-export interface ParteConCoste {
-  /** numeric(4,2): hasta 24 con 2 decimales. */
-  horas: number;
-  /** Coste por hora copiado de la empresa al crear el parte. */
-  costeHoraCents: number;
-  materiales: readonly MaterialConCoste[];
-}
-
-export interface CostesObra {
-  horas: number;
-  numPartes: number;
-  costeManoObraCents: number;
-  costeMaterialCents: number;
-  costeRealCents: number;
-  /** Negativo = en pérdidas. */
-  margenCents: number;
-  consumidoPct: number | null;
-}
-
-/** Mano de obra de un parte en céntimos: horas × coste por hora, redondeado al céntimo. */
-export function costeManoObraCents(horas: number, costeHoraCents: number): number {
-  return lineTotalCents({ cantidad: horas, precioCents: costeHoraCents });
-}
-
-/** Coste de un material del parte en céntimos: cantidad × coste unitario, redondeado al céntimo. */
-export function costeMaterialCents(cantidad: number, costeUnitCents: number): number {
-  return lineTotalCents({ cantidad, precioCents: costeUnitCents });
-}
 
 /** % del presupuesto consumido, con 1 decimal (medio hacia arriba, exacto con enteros); null si no hay presupuesto. */
 export function consumidoPct(costeRealCents: number, presupuestadoCents: number): number | null {
@@ -168,28 +129,6 @@ export function consumidoPct(costeRealCents: number, presupuestadoCents: number)
   const dos = BigInt(2);
   const decimas = (dos * numerador + denominador) / (dos * denominador);
   return Number(decimas) / 10;
-}
-
-/** Coste real, margen y % consumido de una obra a partir de la base de su presupuesto y de sus partes. */
-export function costesObra(presupuestadoCents: number, partes: readonly ParteConCoste[]): CostesObra {
-  let centesimasHora = 0;
-  let manoObra = 0;
-  let material = 0;
-  for (const parte of partes) {
-    centesimasHora += Math.round(parte.horas * 100);
-    manoObra += costeManoObraCents(parte.horas, parte.costeHoraCents);
-    for (const linea of parte.materiales) material += costeMaterialCents(linea.cantidad, linea.costeUnitCents);
-  }
-  const costeReal = manoObra + material;
-  return {
-    horas: centesimasHora / 100,
-    numPartes: partes.length,
-    costeManoObraCents: manoObra,
-    costeMaterialCents: material,
-    costeRealCents: costeReal,
-    margenCents: presupuestadoCents - costeReal,
-    consumidoPct: consumidoPct(costeReal, presupuestadoCents),
-  };
 }
 
 // ----------------------------------------------------------------------------

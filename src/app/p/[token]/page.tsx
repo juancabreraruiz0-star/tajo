@@ -153,10 +153,11 @@ export default async function PresupuestoPublicoPage({ params }: PageProps) {
   }
 
   const { empresa, cliente, presupuesto: p, lineas } = carga.datos;
-  const validoHasta = validUntil(p.created_at, p.validez_dias);
+  // La validez cuenta desde el envío (0008, D13).
+  const validoHasta = validUntil(p, p.validez_dias);
   const aceptado = p.estado === "aceptado" || p.estado === "facturado";
-  // Misma regla que aceptar_presupuesto() (0003): pasado el último día de validez ya no se acepta.
-  const vencido = p.estado === "enviado" && isExpired(p.created_at, p.validez_dias);
+  // Misma regla que aceptar_presupuesto() (0008): pasado el último día de validez ya no se acepta.
+  const vencido = p.estado === "enviado" && isExpired(p, p.validez_dias);
   const sePuedeAceptar = p.estado === "enviado" && !vencido;
   const empleado = sePuedeAceptar && (await abiertoPorEmpleado());
   const estadoCliente = estadoParaCliente(p.estado, vencido);
@@ -282,7 +283,8 @@ export default async function PresupuestoPublicoPage({ params }: PageProps) {
               <dl className="mt-6 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-stone-200 bg-stone-200 text-sm sm:grid-cols-3 print:grid-cols-3">
                 <div className="bg-stone-50 px-4 py-3">
                   <dt className={ETIQUETA}>Fecha</dt>
-                  <dd className="mt-1 font-medium text-stone-900">{formatFechaEnLetra(p.created_at)}</dd>
+                  {/* Fecha de envío: de ahí cuenta la validez (la de creación solo si no consta el envío). */}
+                  <dd className="mt-1 font-medium text-stone-900">{formatFechaEnLetra(p.enviado_at ?? p.created_at)}</dd>
                 </div>
                 <div className="bg-stone-50 px-4 py-3">
                   <dt className={ETIQUETA}>{vencido ? "Venció el" : "Válido hasta el"}</dt>

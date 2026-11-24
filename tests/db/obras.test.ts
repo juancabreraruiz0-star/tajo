@@ -1,9 +1,10 @@
 // Obras y partes (0006 y 0007): alta automática al aceptar, quién cambia qué, partes con autor y costes copiados, obra
-// terminada congelada y la vista obras_resumen frente a costesObra() del dominio. Lo nuevo de 0007 (24 h por día, 30
+// terminada congelada y la vista obras_resumen frente a la regla del dominio (lineTotalCents y consumidoPct). Lo nuevo de 0007 (24 h por día, 30
 // días atrás, inicio fijo y semáforo para el empleado) está en auditoria2.test.ts.
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { costesObra } from "@/lib/domain/obras";
+import { consumidoPct } from "@/lib/domain/obras";
+import { lineTotalCents } from "@/lib/domain/totals";
 import {
   type Base,
   E1,
@@ -184,8 +185,39 @@ describe("partes", () => {
   });
 });
 
+interface ParteConCoste {
+  horas: number;
+  costeHoraCents: number;
+  materiales: { cantidad: number; costeUnitCents: number }[];
+}
+
+/**
+ * Lo que obras_resumen tiene que dar, calculado con las reglas del dominio: mano de obra = round(horas × coste/hora),
+ * material = round(cantidad × coste unitario), margen = presupuestado − coste real y consumido con consumidoPct().
+ */
+function costesEsperados(presupuestadoCents: number, partes: ParteConCoste[]) {
+  let centesimasHora = 0;
+  let manoObra = 0;
+  let material = 0;
+  for (const parte of partes) {
+    centesimasHora += Math.round(parte.horas * 100);
+    manoObra += lineTotalCents({ cantidad: parte.horas, precioCents: parte.costeHoraCents });
+    for (const m of parte.materiales) material += lineTotalCents({ cantidad: m.cantidad, precioCents: m.costeUnitCents });
+  }
+  const costeReal = manoObra + material;
+  return [
+    centesimasHora / 100,
+    manoObra,
+    material,
+    costeReal,
+    presupuestadoCents - costeReal,
+    consumidoPct(costeReal, presupuestadoCents),
+    partes.length,
+  ];
+}
+
 describe("obras_resumen", () => {
-  it("cuadra con costesObra() del dominio en todas las obras (como gerencia)", async () => {
+  it("cuadra con la regla del dominio en todas las obras (como gerencia)", async () => {
     const vista = valor(await base.filas(GER, "select id, presupuestado_cents, horas, coste_mano_obra_cents, coste_material_cents, coste_real_cents, margen_cents, consumido_pct, num_partes from obras_resumen"));
     const partes = await base.q("select id, obra_id, horas, coste_hora_cents from partes where empresa_id = $1", [E1]);
     const materiales = await base.q("select parte_id, cantidad, coste_unit_cents from parte_materiales where empresa_id = $1", [E1]);
@@ -200,11 +232,10 @@ describe("obras_resumen", () => {
             .filter((m) => m.parte_id === p.id)
             .map((m) => ({ cantidad: Number(m.cantidad), costeUnitCents: Number(m.coste_unit_cents) })),
         }));
-      const d = costesObra(Number(o.presupuestado_cents), suyos);
       expect(
         [Number(o.horas), Number(o.coste_mano_obra_cents), Number(o.coste_material_cents), Number(o.coste_real_cents), Number(o.margen_cents), o.consumido_pct === null ? null : Number(o.consumido_pct), Number(o.num_partes)],
         String(o.id),
-      ).toEqual([d.horas, d.costeManoObraCents, d.costeMaterialCents, d.costeRealCents, d.margenCents, d.consumidoPct, d.numPartes]);
+      ).toEqual(costesEsperados(Number(o.presupuestado_cents), suyos));
     }
   });
 

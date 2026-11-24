@@ -7,9 +7,6 @@ import {
   admitePartesNuevos,
   camposEditablesObra,
   consumidoPct,
-  costeManoObraCents,
-  costeMaterialCents,
-  costesObra,
   diaMadrid,
   errorCambioEstadoObra,
   errorParteNuevo,
@@ -111,57 +108,7 @@ describe("partes: cuándo y quién", () => {
   });
 });
 
-describe("costes y margen (misma regla que obras_resumen)", () => {
-  it("mano de obra y materiales redondeados al céntimo, medio hacia arriba", () => {
-    expect(costeManoObraCents(7.5, 2600)).toBe(19500);
-    expect(costeManoObraCents(0.25, 2610)).toBe(653); // 652,5 → 653
-    expect(costeManoObraCents(7.35, 2600)).toBe(19110); // 7.35 × 2600 = 19110.000000000004 en float
-    expect(costeMaterialCents(3.2, 14500)).toBe(46400);
-    expect(costeMaterialCents(0.333, 1005)).toBe(335); // 334,665 → 335
-  });
-
-  it("caso de la cocina del seed: en rojo y en pérdidas", () => {
-    const horas = [12, 10, 10, 6, 8, 6, 6];
-    const materiales = [
-      [],
-      [{ cantidad: 18, costeUnitCents: 120 }],
-      [{ cantidad: 12, costeUnitCents: 120 }],
-      [{ cantidad: 2, costeUnitCents: 760 }],
-      [{ cantidad: 7, costeUnitCents: 840 }],
-      [],
-      [{ cantidad: 3.2, costeUnitCents: 14500 }],
-    ];
-    const partes = horas.map((h, i) => ({ horas: h, costeHoraCents: 2600, materiales: materiales[i] }));
-    const c = costesObra(185270, partes);
-    expect(c).toEqual({
-      horas: 58,
-      numPartes: 7,
-      costeManoObraCents: 150800,
-      costeMaterialCents: 57400,
-      costeRealCents: 208200,
-      margenCents: -22930,
-      consumidoPct: 112.4,
-    });
-    expect(semaforoObra(c.consumidoPct, "en_curso")).toBe("rojo");
-  });
-
-  it("sin partes: coste 0 y consumido 0", () => {
-    expect(costesObra(171000, [])).toEqual({
-      horas: 0,
-      numPartes: 0,
-      costeManoObraCents: 0,
-      costeMaterialCents: 0,
-      costeRealCents: 0,
-      margenCents: 171000,
-      consumidoPct: 0,
-    });
-  });
-
-  it("suma horas con decimales sin ruido de coma flotante", () => {
-    const partes = [0.1, 0.2, 0.7].map((horas) => ({ horas, costeHoraCents: 100, materiales: [] }));
-    expect(costesObra(1000, partes).horas).toBe(1);
-  });
-
+describe("% consumido (misma regla que obras_resumen)", () => {
   it("consumido: 1 decimal, medio hacia arriba, exacto con importes grandes; null sin presupuestado", () => {
     expect(consumidoPct(107830, 115100)).toBe(93.7);
     expect(consumidoPct(1, 2000)).toBe(0.1); // 0,05 % → 0,1

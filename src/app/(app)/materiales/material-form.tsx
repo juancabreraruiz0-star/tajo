@@ -18,9 +18,11 @@ interface MaterialFormProps {
   initial?: Partial<Record<MaterialField, string>>;
   /** El material está ahora mismo en negativo: se avisa y se puede guardar sin tocar el stock. */
   stockNegativo?: boolean;
+  /** Mostrar el coste (solo gerencia: la acción y la base de datos lo imponen también). */
+  conCoste?: boolean;
 }
 
-export function MaterialForm({ id, initial = {}, stockNegativo = false }: MaterialFormProps) {
+export function MaterialForm({ id, initial = {}, stockNegativo = false, conCoste = false }: MaterialFormProps) {
   const [state, formAction] = useActionState<MaterialFormState, FormData>(saveMaterial.bind(null, id), {});
   const value = (campo: MaterialField) => state.values?.[campo] ?? initial[campo] ?? "";
   const error = (campo: MaterialField) => state.fieldErrors?.[campo];
@@ -64,17 +66,31 @@ export function MaterialForm({ id, initial = {}, stockNegativo = false }: Materi
           </datalist>
         </div>
 
-        <Input
-          label="Precio por unidad (€)"
-          name="precio"
-          required
-          inputMode="decimal"
-          autoComplete="off"
-          placeholder="12,50"
-          hint="Sin IVA. Puedes usar coma: 12,50"
-          defaultValue={value("precio")}
-          error={error("precio")}
-        />
+        <div className={conCoste ? "grid gap-5 sm:grid-cols-2" : undefined}>
+          <Input
+            label="Precio por unidad (€)"
+            name="precio"
+            required
+            inputMode="decimal"
+            autoComplete="off"
+            placeholder="12,50"
+            hint="Sin IVA. Puedes usar coma: 12,50"
+            defaultValue={value("precio")}
+            error={error("precio")}
+          />
+          {conCoste && (
+            <Input
+              label="Coste por unidad (€)"
+              name="coste"
+              inputMode="decimal"
+              autoComplete="off"
+              placeholder="8,20"
+              hint="Sin IVA. Lo que te cuesta a ti; da el margen de las obras. Vacío: se usa el precio."
+              defaultValue={value("coste")}
+              error={error("coste")}
+            />
+          )}
+        </div>
 
         <div className="grid gap-5 sm:grid-cols-2">
           <Input

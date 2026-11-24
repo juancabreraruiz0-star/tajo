@@ -15,16 +15,21 @@ import { MaterialForm } from "../../material-form";
 
 export const metadata: Metadata = { title: "Editar material" };
 
-type MaterialEditable = Pick<Material, "id" | "nombre" | "unidad" | "precio_cents" | "stock" | "stock_minimo">;
+type MaterialEditable = Pick<Material, "id" | "nombre" | "unidad" | "precio_cents" | "stock" | "stock_minimo"> &
+  Partial<Pick<Material, "coste_cents">>;
+
+const COLUMNAS = "id, nombre, unidad, precio_cents, stock, stock_minimo";
 
 export default async function EditarMaterialPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   if (!isUuid(id)) notFound();
 
   const { perfil, supabase } = await getSessionProfile();
+  // El coste solo lo ve y lo cambia gerencia (M2).
+  const admin = isAdmin(perfil);
   const { data: material, error } = await supabase
     .from("materiales")
-    .select("id, nombre, unidad, precio_cents, stock, stock_minimo")
+    .select(admin ? `${COLUMNAS}, coste_cents` : COLUMNAS)
     .eq("id", id)
     .maybeSingle<MaterialEditable>();
 
@@ -43,14 +48,16 @@ export default async function EditarMaterialPage({ params }: { params: Promise<{
           nombre: material.nombre,
           unidad: material.unidad,
           precio: centsToEurosInput(material.precio_cents),
+          coste: material.coste_cents == null ? "" : centsToEurosInput(material.coste_cents),
           stock: quantityToInput(stock),
           stock_minimo: quantityToInput(Number(material.stock_minimo)),
         }}
         stockNegativo={isNegativeStock(stock)}
+        conCoste={admin}
       />
 
       {/* Borrar: solo gerencia. La RLS (materiales_delete) lo impone también en la base de datos. */}
-      {isAdmin(perfil) && (
+      {admin && (
         <Card className="mt-8 border-red-200">
           <CardHeader
             title="Borrar material"

@@ -134,3 +134,23 @@ La segunda auditoría (`docs/AUDITORIA-2.md`) dio por buenos el aislamiento, los
 - **Invitaciones:** se marcan como usadas (`usada_at`). El perfil solo se crea con el email confirmado, también si la confirmación llega después.
 - **Tests de base de datos en el repo:** banco con PGlite en `npm run test:pglite`, que no necesita Supabase ni contraseñas, y CI de GitHub Actions con `npm run check` y `test:pglite`.
 - Migración `0007_auditoria2.sql`. Orden: 0001 → 0007 → seed.
+
+## D13 · Correcciones de la tercera auditoría externa (T18)
+
+La tercera auditoría (`docs/AUDITORIA-3.md`) no encontró bloqueantes ni fallos de seguridad. Se corrige así:
+
+- **M1 · La validez cuenta desde el envío.** Último día válido = día (hora de Madrid) de `coalesce(enviado_at, created_at)` + `validez_dias`. Lo aplican igual el dominio (`validUntil` e `isExpired` reciben `{ created_at, enviado_at }`), `aceptar_presupuesto()`, la aceptación interna de gerencia (trigger) y las dos pantallas. `enviado_at` ya existía (0001) y lo pone el trigger al enviar (0002): no hace falta rellenar nada. La página pública enseña como «Fecha» la del envío.
+- **M2 · Coste del material desde la app.** Campo «Coste por unidad» (sin IVA) en el formulario de materiales y columna en el listado, solo para gerencia. Vacío = `null` (los partes usan el precio de venta, como hasta ahora). La Server Action solo lo lee y lo envía si quien guarda es gerencia; el trigger de 0006 lo impone también en la base.
+- **Menor 7 · No se envía un presupuesto de 0 €.** El trigger lo rechaza al pasar a `enviado` con el error propio `TJ004`, que `errors.ts` traduce; la acción y el detalle lo dicen antes (`envioError()` del dominio).
+- **Menor 3 · Constancia fija.**
+  - `enviado_por_nombre`: copia del nombre del perfil que envía, la pone el trigger y no cambia (ni si el usuario cambia su nombre o se borra). Para los ya enviados se rellena con el nombre actual de su perfil, que es lo único que hay.
+  - La IP y el navegador de la aceptación salen de `presupuestos` (que lee toda la empresa) a la tabla `presupuesto_aceptaciones`: RLS de lectura solo para gerencia de la empresa, sin permisos de escritura para la API; la escribe `aceptar_presupuesto()`. Se copian los existentes antes de quitar las columnas. Era lo más simple y seguro: Postgres no permite ocultar columnas por fila, y una función `security definer` para gerencia habría dejado las columnas legibles igualmente.
+  - Lo que no cambia: el nombre de quien da por aceptado desde la app (`aceptado_por`, siempre gerencia) se sigue leyendo del perfil; no entraba en el hallazgo.
+- **Menor 2 · Pantallas de error en español** (`error.tsx` y `global-error.tsx`), con el estilo de la de «no encontrada»: sin el mensaje técnico, solo el código (`digest`) en pequeño.
+- **Menor 6 · Factura:** no hay sitio para un IBAN en la empresa y no se crea, así que la forma de pago pasa a «Según lo acordado con la empresa».
+- **Menor 8 · Seed:** correos de clientes en `example.com` y teléfonos del rango que Ofcom reserva para ficción (+44 7700 900xxx y +44 20 7946 0xxx): «Enviar por WhatsApp» no abre el chat de nadie real.
+- **Menor 5 · Código muerto:** fuera `costesObra()` (con sus funciones y tipos, que solo usaba él), `tipoNif`, `EmpresaCosteHora` y `MaterialCoste`. El test de PGlite que comparaba `obras_resumen` con `costesObra()` sigue, con la misma regla escrita en el propio test.
+- **Menor 1 y 4 · Documentación:** el README explica que la demo es compartida y cómo se restaura; `CLAUDE.md` y los agentes incluyen obras, IA y `test:pglite`.
+- **Menor 9 (historial de git con pocos commits):** no se reescribe el historial; el bucle de agentes se sigue en `docs/PLAN.md`.
+- **Dependencias:** vitest 3 → 5 (y `@types/node` 20 → 22, que vitest 5 pide); `npm audit` queda en 0. Las configuraciones de vitest pasan a `.mts`.
+- Migración `0008_auditoria3.sql`, entre `begin` y `commit`. Orden: 0001 → 0008 → seed. Se aplica sobre la base con datos sin perder nada y se puede repetir; después hay que desplegar la app de T18 (la anterior pedía `aceptado_ip`).

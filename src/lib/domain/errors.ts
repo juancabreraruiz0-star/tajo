@@ -1,5 +1,7 @@
 // Traducción a español de los errores que devuelve Supabase (Auth y PostgREST/Postgres).
 
+import { MENSAJE_TOTAL_CERO } from "./presupuestos";
+
 export interface DbErrorLike {
   code?: string | null;
   message?: string | null;
@@ -42,6 +44,9 @@ export const ERROR_LIMITE_IA = "TJ002";
 
 /** Error propio de consumir_uso_ia() (0007) cuando el usuario ya ha gastado sus propuestas con IA del día. */
 export const ERROR_LIMITE_IA_USUARIO = "TJ003";
+
+/** Error propio del trigger presupuestos_reglas (0008) al enviar un presupuesto cuyo total es 0 €. */
+export const ERROR_TOTAL_CERO = "TJ004";
 
 /**
  * CHECK de la base (23514) → qué límite se ha saltado. Se busca por el nombre de la restricción, que Postgres pone
@@ -106,6 +111,9 @@ export function dbErrorMessage(error: DbErrorLike, contexto: DbErrorContext = "g
     case ERROR_LIMITE_IA_USUARIO:
       // consumir_uso_ia() con la cuota del usuario gastada (15 al día): el mensaje ya viene en español.
       return message || "Has llegado a tu límite de 15 propuestas con IA de hoy. Vuelve a intentarlo mañana.";
+    case ERROR_TOTAL_CERO:
+      // Envío de un presupuesto de 0 € (0008).
+      return MENSAJE_TOTAL_CERO;
   }
   if (isNetworkError(message)) return SIN_CONEXION;
   return "Ha ocurrido un error inesperado. Inténtalo de nuevo.";

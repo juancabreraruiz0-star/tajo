@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cifControlDigit, nifError, normalizeNif, parseNif, tipoNif } from "./nif";
+import { cifControlDigit, nifError, normalizeNif, parseNif } from "./nif";
 
 describe("normalizeNif", () => {
   it("pasa a mayúsculas y quita espacios, puntos y guiones", () => {
@@ -109,16 +109,6 @@ describe("nifError · forma", () => {
     expect(nifError("123456789")).toMatch(/No parece/);
     expect(nifError("ABCDEFGHI")).toMatch(/No parece/);
     expect(nifError("X12345678")).toMatch(/No parece/);
-  });
-});
-
-describe("tipoNif", () => {
-  it("distingue DNI, NIE, NIF especial y CIF", () => {
-    expect(tipoNif("12345678Z")).toBe("dni");
-    expect(tipoNif("X1234567L")).toBe("nie");
-    expect(tipoNif("K1234567L")).toBe("nif_especial");
-    expect(tipoNif("B12345674")).toBe("cif");
-    expect(tipoNif("I12345674")).toBeNull();
   });
 });
 

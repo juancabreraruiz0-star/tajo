@@ -1,5 +1,7 @@
 // Segunda auditoría externa (docs/AUDITORIA-2.md) → migración 0007 (D12). Un bloque por hallazgo: los dos VULN del
 // auditor (A2 y M1) cerrados o documentados, y cada punto nuevo de 0007 (B1–B5, B7).
+// Desde 0008 (D13) la IP y el navegador de la aceptación están en presupuesto_aceptaciones (solo gerencia): aquí se
+// leen con un join, como postgres o como gerencia.
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { nifError } from "@/lib/domain/nif";
@@ -56,8 +58,9 @@ describe("A2 · aceptación por enlace con evidencia", () => {
       await ser(tx, "postgres");
       const fila = await unaEn(
         tx,
-        `select estado, aceptado_canal, aceptado_por, aceptado_nombre, aceptado_ip, aceptado_user_agent, enviado_por
-           from presupuestos where id = $1`,
+        `select p.estado, p.aceptado_canal, p.aceptado_por, p.aceptado_nombre, a.ip as aceptado_ip,
+                a.user_agent as aceptado_user_agent, p.enviado_por
+           from presupuestos p left join presupuesto_aceptaciones a on a.presupuesto_id = p.id where p.id = $1`,
         [SEED.presupuestoEnviado],
       );
       return { acepta: acepta.r, fila };
@@ -109,7 +112,9 @@ describe("A2 · aceptación por enlace con evidencia", () => {
       await ser(tx, "anon");
       await en(tx, ACEPTAR, [t, "Lucía", `1.2.3.4\u0007${"9".repeat(80)}`, `UA\r\n${"x".repeat(500)}`]);
       await ser(tx, "postgres");
-      return unaEn(tx, "select aceptado_ip, aceptado_user_agent from presupuestos where id = $1", [SEED.presupuestoEnviado]);
+      return unaEn(tx, "select ip as aceptado_ip, user_agent as aceptado_user_agent from presupuesto_aceptaciones where presupuesto_id = $1", [
+        SEED.presupuestoEnviado,
+      ]);
     });
     const fila = valor(r);
     expect(String(fila.aceptado_ip)).toHaveLength(64);
@@ -124,7 +129,9 @@ describe("A2 · aceptación por enlace con evidencia", () => {
       await ser(tx, "anon");
       await en(tx, ACEPTAR, [t, "Lucía Esteve", null, "  "]);
       await ser(tx, "postgres");
-      return unaEn(tx, "select aceptado_ip, aceptado_user_agent from presupuestos where id = $1", [SEED.presupuestoEnviado]);
+      return unaEn(tx, "select ip as aceptado_ip, user_agent as aceptado_user_agent from presupuesto_aceptaciones where presupuesto_id = $1", [
+        SEED.presupuestoEnviado,
+      ]);
     });
     expect(valor(r)).toEqual({ aceptado_ip: null, aceptado_user_agent: null });
   });
@@ -146,8 +153,8 @@ describe("A2 · aceptación por enlace con evidencia", () => {
       await ser(tx, GER);
       const visto = await unaEn(
         tx,
-        `select aceptado_canal, aceptado_nombre, aceptado_ip, aceptado_user_agent, enviado_por
-           from presupuestos_con_totales where id = $1`,
+        `select v.aceptado_canal, v.aceptado_nombre, a.ip as aceptado_ip, a.user_agent as aceptado_user_agent, v.enviado_por
+           from presupuestos_con_totales v left join presupuesto_aceptaciones a on a.presupuesto_id = v.id where v.id = $1`,
         [SEED.presupuestoEnviado2],
       );
       return { acepta: acepta.r, visto };
@@ -168,8 +175,8 @@ describe("A2 · aceptación por enlace con evidencia", () => {
       await ser(tx, OBRA);
       const alta = await unaEn(
         tx,
-        `insert into presupuestos (empresa_id, cliente_id, titulo, enviado_por, aceptado_nombre, aceptado_ip, aceptado_user_agent)
-         values ($1, $2, 'Forjado', $3, 'Falso', '1.1.1.1', 'UA') returning enviado_por, aceptado_nombre, aceptado_ip, aceptado_user_agent`,
+        `insert into presupuestos (empresa_id, cliente_id, titulo, enviado_por, enviado_por_nombre, aceptado_nombre)
+         values ($1, $2, 'Forjado', $3, 'Falso', 'Falso') returning enviado_por, enviado_por_nombre, aceptado_nombre`,
         [E1, SEED.cliente(1), GER],
       );
       const cambios: Record<string, string> = {};
@@ -181,8 +188,7 @@ describe("A2 · aceptación por enlace con evidencia", () => {
         await ser(tx, quien);
         for (const sql of [
           "update presupuestos set aceptado_nombre = 'Otro' where id = $1 returning id",
-          "update presupuestos set aceptado_ip = '9.9.9.9' where id = $1 returning id",
-          "update presupuestos set aceptado_user_agent = 'otro' where id = $1 returning id",
+          "update presupuestos set enviado_por_nombre = 'Otro' where id = $1 returning id",
           "update presupuestos set enviado_por = null where id = $1 returning id",
         ]) {
           cambios[`${nombre}: ${sql.split(" set ")[1].split(" =")[0]}`] = error(
@@ -193,7 +199,7 @@ describe("A2 · aceptación por enlace con evidencia", () => {
       return { alta, cambios };
     });
     const { alta, cambios } = valor(r);
-    expect(alta).toEqual({ enviado_por: null, aceptado_nombre: null, aceptado_ip: null, aceptado_user_agent: null });
+    expect(alta).toEqual({ enviado_por: null, enviado_por_nombre: null, aceptado_nombre: null });
     for (const [paso, msg] of Object.entries(cambios)) {
       expect(msg, paso).toMatch(/lo pone el sistema|los pone el sistema/);
     }
@@ -204,8 +210,9 @@ describe("A2 · aceptación por enlace con evidencia", () => {
       await ser(tx, GER);
       return unaEn(
         tx,
-        `update presupuestos set estado = 'aceptado', aceptado_nombre = 'Inventado', aceptado_ip = '1.1.1.1'
-          where id = $1 returning aceptado_canal, aceptado_por, aceptado_nombre, aceptado_ip, aceptado_user_agent`,
+        `update presupuestos set estado = 'aceptado', aceptado_nombre = 'Inventado'
+          where id = $1 returning aceptado_canal, aceptado_por, aceptado_nombre,
+                (select count(*)::int from presupuesto_aceptaciones a where a.presupuesto_id = $1) as evidencias`,
         [SEED.presupuestoEnviado],
       );
     });
@@ -213,8 +220,7 @@ describe("A2 · aceptación por enlace con evidencia", () => {
       aceptado_canal: "interno",
       aceptado_por: GER,
       aceptado_nombre: null,
-      aceptado_ip: null,
-      aceptado_user_agent: null,
+      evidencias: 0,
     });
   });
 
@@ -238,9 +244,10 @@ describe("A2 · aceptación por enlace con evidencia", () => {
     const malos = await base.q(
       `select p.numero from presupuestos p join clientes c on c.id = p.cliente_id
         where p.empresa_id = $1 and (
-              (p.estado <> 'borrador' and p.enviado_por is null)
+              (p.estado <> 'borrador' and (p.enviado_por is null or p.enviado_por_nombre is null))
            or (p.aceptado_canal = 'enlace' and (p.aceptado_nombre is distinct from c.nombre
-               or p.aceptado_ip is null or p.aceptado_user_agent is null))
+               or not exists (select 1 from presupuesto_aceptaciones a
+                               where a.presupuesto_id = p.id and a.ip is not null and a.user_agent is not null)))
            or (p.aceptado_canal is distinct from 'enlace' and p.aceptado_nombre is not null))`,
       [E1],
     );

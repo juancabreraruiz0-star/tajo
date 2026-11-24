@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   draftLineCents,
   draftTotals,
+  envioError,
   isExpired,
   LIMITES_PRESUPUESTO,
   MAX_TOTAL_CENTS,
@@ -228,27 +229,57 @@ describe("originFromHeaders", () => {
 });
 
 describe("validUntil", () => {
-  it("suma los días a la fecha de creación en Madrid", () => {
-    expect(validUntil("2026-03-10T09:00:00Z", 30)).toBe("2026-04-09");
+  const creado = (created_at: string) => ({ created_at, enviado_at: null });
+  it("sin envío (borrador), suma los días a la fecha de creación en Madrid", () => {
+    expect(validUntil(creado("2026-03-10T09:00:00Z"), 30)).toBe("2026-04-09");
     // 23:30 UTC del 31/12 ya es 1/1 en Madrid.
-    expect(validUntil("2025-12-31T23:30:00Z", 15)).toBe("2026-01-16");
+    expect(validUntil(creado("2025-12-31T23:30:00Z"), 15)).toBe("2026-01-16");
     // 22:30 UTC del 29/3 (ya en horario de verano) es 30/3 en Madrid.
-    expect(validUntil("2026-03-29T22:30:00Z", 1)).toBe("2026-03-31");
+    expect(validUntil(creado("2026-03-29T22:30:00Z"), 1)).toBe("2026-03-31");
+  });
+  it("enviado, cuenta desde el envío y no desde la creación", () => {
+    // Borrador de hace 40 días que se envía el 10/5: válido hasta el 9/6.
+    expect(validUntil({ created_at: "2026-03-31T09:00:00Z", enviado_at: "2026-05-10T08:00:00Z" }, 30)).toBe("2026-06-09");
+    // El día del envío también va en hora de Madrid.
+    expect(validUntil({ created_at: "2026-01-02T09:00:00Z", enviado_at: "2026-01-04T23:30:00Z" }, 10)).toBe("2026-01-15");
   });
   it("lanza error con fecha o días no válidos", () => {
-    expect(() => validUntil("no", 30)).toThrow();
-    expect(() => validUntil("2026-03-10T09:00:00Z", 1.5)).toThrow();
+    expect(() => validUntil(creado("no"), 30)).toThrow();
+    expect(() => validUntil({ created_at: "2026-03-10T09:00:00Z", enviado_at: "no" }, 30)).toThrow();
+    expect(() => validUntil(creado("2026-03-10T09:00:00Z"), 1.5)).toThrow();
   });
 });
 
 describe("isExpired", () => {
-  const creado = "2026-03-10T09:00:00Z"; // válido hasta el 2026-04-09
+  const creado = { created_at: "2026-03-10T09:00:00Z", enviado_at: null }; // válido hasta el 2026-04-09
   it("el último día todavía es válido", () => {
     expect(isExpired(creado, 30, new Date("2026-04-09T21:00:00Z"))).toBe(false);
   });
   it("vence al día siguiente (hora de Madrid)", () => {
     expect(isExpired(creado, 30, new Date("2026-04-09T22:30:00Z"))).toBe(true);
     expect(isExpired(creado, 30, new Date("2026-05-01T10:00:00Z"))).toBe(true);
+  });
+  it("un borrador viejo enviado hoy no está vencido; enviado hace más de la validez, sí", () => {
+    const hoy = new Date("2026-05-10T10:00:00Z");
+    const viejo = "2026-03-01T09:00:00Z"; // creado hace 70 días
+    expect(isExpired({ created_at: viejo, enviado_at: "2026-05-10T08:00:00Z" }, 30, hoy)).toBe(false);
+    expect(isExpired({ created_at: viejo, enviado_at: "2026-04-10T08:00:00Z" }, 30, hoy)).toBe(false); // hoy es el último día
+    expect(isExpired({ created_at: viejo, enviado_at: "2026-04-09T08:00:00Z" }, 30, hoy)).toBe(true);
+  });
+});
+
+describe("envioError", () => {
+  it("se puede enviar con partidas y total mayor que 0", () => {
+    expect(envioError({ numPartidas: 3, totalCents: 121 })).toBeNull();
+    expect(envioError({ numPartidas: 1, totalCents: 1 })).toBeNull();
+  });
+  it("sin partidas no se envía", () => {
+    expect(envioError({ numPartidas: 0, totalCents: 0 })).toMatch(/al menos una partida/);
+  });
+  it("con total 0 € no se envía (partidas a precio 0)", () => {
+    const totales = budgetTotals([{ cantidad: 2, precioCents: 0 }], 21);
+    expect(totales.totalCents).toBe(0);
+    expect(envioError({ numPartidas: 1, totalCents: totales.totalCents })).toMatch(/total es 0 €/);
   });
 });
 

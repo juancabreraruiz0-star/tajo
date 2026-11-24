@@ -1,6 +1,7 @@
 -- Tajo · 0003_guardar_presupuesto.sql — guardado atómico de presupuestos y dos reglas más en la base de datos.
 -- Orden de ejecución: 1) migrations/0001_esquema.sql; 2) migrations/0002_reglas.sql; 3) este fichero; 4) seed.sql
 -- (el seed no depende de este fichero: si ya estaba cargado, basta con ejecutar este).
+-- Orden completo: 0001 → 0002 → 0003 → 0004 → 0005 → 0006 → 0007 → 0008_auditoria3.sql → seed.sql.
 -- Cómo se ejecuta: Supabase → SQL Editor → pegar este fichero entero → Run.
 -- Es idempotente: solo usa create or replace, así que se puede volver a ejecutar. Si se vuelve a ejecutar 0002
 -- después de este fichero, hay que volver a ejecutar este (0002 deja presupuestos_reglas() sin la comprobación

@@ -2,8 +2,6 @@
 // La base de datos normaliza igual (trigger clientes_normalizar) y comprueba solo el formato (9 letras o cifras);
 // la letra o el dígito de control se validan aquí. Puro: sin Next ni Supabase.
 
-export type TipoNif = "dni" | "nie" | "nif_especial" | "cif";
-
 /** Letra de control de DNI y NIE: número mod 23. */
 const LETRAS_DNI = "TRWAGMYFPDXBNJZSQVHLCKE";
 /** Letra de control del CIF según el dígito calculado (0 = J, 1 = A … 9 = I). */
@@ -46,15 +44,6 @@ export function cifControlDigit(cifras: string): number {
     }
   }
   return (10 - (suma % 10)) % 10;
-}
-
-/** Tipo de documento según la forma (sin comprobar el control), o null si no encaja con ninguno. */
-export function tipoNif(nif: string): TipoNif | null {
-  if (DNI.test(nif)) return "dni";
-  if (NIE.test(nif)) return "nie";
-  if (NIF_ESPECIAL.test(nif)) return "nif_especial";
-  const cif = CIF.exec(nif);
-  return cif && CIF_LETRAS.includes(cif[1]) ? "cif" : null;
 }
 
 /**

@@ -11,7 +11,7 @@ import { readFields, type FormState } from "./form-state";
 export type MaterialFormState = FormState<MaterialField>;
 export type DeleteState = { error?: string };
 
-const CAMPOS = ["nombre", "unidad", "precio", "stock", "stock_minimo"] as const;
+const CAMPOS = ["nombre", "unidad", "precio", "coste", "stock", "stock_minimo"] as const;
 
 /** Alta (id = null) o edición de un material. Si va bien, vuelve al listado. */
 export async function saveMaterial(
@@ -23,6 +23,9 @@ export async function saveMaterial(
   if (id !== null && !isUuid(id)) return { error: "El material no existe.", values };
 
   const { perfil, supabase } = await getSessionProfile();
+  // El coste (M2) solo lo pone o cambia gerencia; la base de datos también lo impone (trigger de 0006). Para un
+  // empleado no se lee del formulario ni se envía: al crear queda vacío y al editar no se toca.
+  const conCoste = isAdmin(perfil);
 
   // Al editar se lee el stock actual: si está en negativo, el formulario puede devolverlo tal cual (sin tocarlo).
   let stockActual: number | undefined;
@@ -37,7 +40,7 @@ export async function saveMaterial(
     stockActual = Number(actual.stock);
   }
 
-  const validation = validateMaterial(values, { stockActual });
+  const validation = validateMaterial(values, { stockActual, conCoste });
   if (!validation.ok) {
     return { error: "Revisa los campos marcados.", fieldErrors: validation.errors, values };
   }

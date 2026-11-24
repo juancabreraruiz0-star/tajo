@@ -2,7 +2,8 @@
 -- Cómo se ejecuta:
 --   1) Aplicar, en este orden, en el SQL Editor (rol postgres): migrations/0001_esquema.sql →
 --      migrations/0002_reglas.sql → migrations/0003_guardar_presupuesto.sql → migrations/0004_auditoria.sql →
---      migrations/0005_uso_ia.sql → migrations/0006_obras.sql → migrations/0007_auditoria2.sql.
+--      migrations/0005_uso_ia.sql → migrations/0006_obras.sql → migrations/0007_auditoria2.sql →
+--      migrations/0008_auditoria3.sql.
 --   2) Crear en Authentication → Add user a gerencia@reformaslevante.es y obra@reformaslevante.es (si no existen).
 --   3) SQL Editor → pegar este fichero entero → Run (el SQL Editor lo ejecuta todo en una sola transacción).
 -- Es reejecutable: borra antes los datos de demo de las dos empresas (también obras y partes) y reinicia su
@@ -30,6 +31,9 @@ begin
   end if;
   if to_regprocedure('public.nif_valido(text)') is null then
     raise exception 'Falta aplicar migrations/0007_auditoria2.sql antes del seed.';
+  end if;
+  if to_regclass('public.presupuesto_aceptaciones') is null then
+    raise exception 'Falta aplicar migrations/0008_auditoria3.sql antes del seed.';
   end if;
 end;
 $$;
@@ -139,6 +143,8 @@ delete from public.obras
  where empresa_id in ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002');
 delete from public.facturas
  where empresa_id in ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002');
+delete from public.presupuesto_aceptaciones
+ where empresa_id in ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002');
 delete from public.presupuesto_lineas
  where empresa_id in ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002');
 delete from public.presupuestos
@@ -151,32 +157,35 @@ delete from public.contadores
  where empresa_id in ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002');
 
 -- ============================================================================
--- 4. Clientes (con NIF o CIF de demo, con su letra o dígito de control calculado; se comprueba en la sección 10)
+-- 4. Clientes (con NIF o CIF de demo, con su letra o dígito de control calculado; se comprueba en la sección 12).
+--    Contacto ficticio (D13): correos en example.com (reservado, RFC 2606) y teléfonos del rango que Ofcom reserva
+--    para ficción (+44 7700 900xxx móviles, +44 20 7946 0xxx fijos): no son de nadie, así que «Enviar por WhatsApp»
+--    no abre el chat de una persona real.
 -- ============================================================================
 
 insert into public.clientes (id, empresa_id, nombre, nif, telefono, email, direccion, notas, created_at)
 select v.id, '00000000-0000-0000-0000-000000000001', v.nombre, v.nif, v.telefono, v.email, v.direccion, v.notas,
        now() - make_interval(days => v.dias)
   from (values
-    ('10000000-0000-4000-8000-000000000001'::uuid, 'Carmen Puig Soler', '20481537Z', '600 112 233', 'carmen.puig@gmail.com',
+    ('10000000-0000-4000-8000-000000000001'::uuid, 'Carmen Puig Soler', '20481537Z', '+44 7700 900101', 'carmen.puig@example.com',
      'C/ de Sueca 34, 3º 6ª, 46006 Valencia', 'Piso en Russafa. Mejor llamar por la tarde.', 70),
-    ('10000000-0000-4000-8000-000000000002'::uuid, 'Vicent Llorens Martí', '29176054W', '646 221 908', 'vllorens@hotmail.com',
+    ('10000000-0000-4000-8000-000000000002'::uuid, 'Vicent Llorens Martí', '29176054W', '+44 7700 900102', 'vllorens@example.com',
      'C/ del Doctor Sumsi 12, 4º, 46005 Valencia', null, 66),
-    ('10000000-0000-4000-8000-000000000003'::uuid, 'Comunidad de Propietarios Blasco Ibáñez 88', 'H96381272', '963 600 144', 'admin.blascoibanez88@gmail.com',
+    ('10000000-0000-4000-8000-000000000003'::uuid, 'Comunidad de Propietarios Blasco Ibáñez 88', 'H96381272', '+44 20 7946 0103', 'admin.blascoibanez88@example.com',
      'Av. de Blasco Ibáñez 88, 46021 Valencia', 'Trato con el administrador de fincas. Obras en horario de 9 a 14.', 6),
-    ('10000000-0000-4000-8000-000000000004'::uuid, 'Amparo Ferrandis Gil', '44859213J', '655 340 127', 'amparo.ferrandis@gmail.com',
+    ('10000000-0000-4000-8000-000000000004'::uuid, 'Amparo Ferrandis Gil', '44859213J', '+44 7700 900104', 'amparo.ferrandis@example.com',
      'C/ Major 21, 46900 Torrent', 'Persona mayor: plato de ducha a ras de suelo.', 48),
-    ('10000000-0000-4000-8000-000000000005'::uuid, 'Josep Ribes Navarro', '73562180S', '678 905 412', 'josepribes@yahoo.es',
+    ('10000000-0000-4000-8000-000000000005'::uuid, 'Josep Ribes Navarro', '73562180S', '+44 7700 900105', 'josepribes@example.com',
      'C/ del Progrés 8, 46011 Valencia', 'Casa en el Cabanyal. Tiene perro, avisar antes de entrar.', 3),
-    ('10000000-0000-4000-8000-000000000006'::uuid, 'Arrocería El Racó S.L.', 'B96452131', '961 203 456', 'arroceriaelraco@gmail.com',
+    ('10000000-0000-4000-8000-000000000006'::uuid, 'Arrocería El Racó S.L.', 'B96452131', '+44 20 7946 0106', 'arroceriaelraco@example.com',
      'C/ de la Reina 73, 46011 Valencia', 'Solo pueden cerrar el local los lunes.', 50),
-    ('10000000-0000-4000-8000-000000000007'::uuid, 'María José Sanchis Pons', '48291736Q', '699 018 773', 'mjsanchis@gmail.com',
+    ('10000000-0000-4000-8000-000000000007'::uuid, 'María José Sanchis Pons', '48291736Q', '+44 7700 900107', 'mjsanchis@example.com',
      'C/ de Cuba 17, 2º 3ª, 46006 Valencia', null, 42),
-    ('10000000-0000-4000-8000-000000000008'::uuid, 'Pedro Alcañiz Romero', '24670395C', '627 444 190', 'pedro.alcaniz@outlook.es',
+    ('10000000-0000-4000-8000-000000000008'::uuid, 'Pedro Alcañiz Romero', '24670395C', '+44 7700 900108', 'pedro.alcaniz@example.com',
      'C/ Camí Real 15, 46470 Catarroja', 'Quiere hacer la obra antes de Navidad.', 28),
-    ('10000000-0000-4000-8000-000000000009'::uuid, 'Lucía Esteve Baixauli', '53018947Z', '644 778 021', 'lucia.esteve@gmail.com',
+    ('10000000-0000-4000-8000-000000000009'::uuid, 'Lucía Esteve Baixauli', '53018947Z', '+44 7700 900109', 'lucia.esteve@example.com',
      'Av. de França 30, 7º 14ª, 46023 Valencia', 'Piso recién comprado, vacío. Llaves en portería.', 12),
-    ('10000000-0000-4000-8000-000000000010'::uuid, 'Clínica Dental Benimaclet S.L.P.', 'B97183420', '963 412 980', 'clinicadentalbenimaclet@gmail.com',
+    ('10000000-0000-4000-8000-000000000010'::uuid, 'Clínica Dental Benimaclet S.L.P.', 'B97183420', '+44 20 7946 0110', 'clinicadentalbenimaclet@example.com',
      'C/ d’Emili Baró 50, 46020 Valencia', 'Trabajos fuera del horario de consulta (después de las 20 h).', 30)
   ) as v(id, nombre, nif, telefono, email, direccion, notas, dias);
 
@@ -208,8 +217,9 @@ select v.id, '00000000-0000-0000-0000-000000000001', v.nombre, v.unidad, v.preci
 --    del año en curso. Los contadores se ajustan en la sección 9.
 --    Aceptados y facturados: por el enlace del cliente, salvo «Cambio de ventanas», que gerencia dio por aceptado
 --    por teléfono (aceptado_canal = 'interno').
---    Evidencia (D12): quién lo envió (enviado_por: gerencia u obra) y, en los aceptados por el enlace, el nombre que
---    escribió el cliente (el suyo), la IP (direcciones reservadas para ejemplos, RFC 5737) y el navegador.
+--    Evidencia (D12, D13): quién lo envió (enviado_por: gerencia u obra, con la copia de su nombre en
+--    enviado_por_nombre) y, en los aceptados por el enlace, el nombre que escribió el cliente (el suyo) y, en
+--    presupuesto_aceptaciones, la IP (direcciones reservadas para ejemplos, RFC 5737) y el navegador.
 -- ============================================================================
 
 with ref as (
@@ -293,24 +303,35 @@ numerados as (
            order by d.created_at, d.id
          ) as orden_anio
     from datos d
+),
+insertados as (
+  insert into public.presupuestos
+    (id, empresa_id, cliente_id, numero, titulo, estado, iva_pct, validez_dias, created_at, enviado_at, aceptado_at,
+     aceptado_canal, aceptado_por, enviado_por, enviado_por_nombre, aceptado_nombre)
+  select n.id, '00000000-0000-0000-0000-000000000001', n.cliente_id,
+         'P-' || n.anio || '-' || lpad(n.orden_anio::text, 4, '0'),
+         n.titulo, n.estado, n.iva_pct, n.validez_dias, n.created_at, n.enviado_at, n.aceptado_at,
+         n.aceptado_canal,
+         case when n.aceptado_canal = 'interno' then (select g.id from gerencia g) end,
+         e.id,
+         pf.nombre,
+         case when n.aceptado_canal = 'enlace' then c.nombre end
+    from numerados n
+    join public.clientes c on c.id = n.cliente_id
+    cross join lateral (
+      select case n.enviado_por
+               when 'gerencia' then (select g.id from gerencia g)
+               when 'obra'     then (select o.id from obra o)
+             end as id
+    ) e
+    left join public.perfiles pf on pf.id = e.id
+  returning id
 )
-insert into public.presupuestos
-  (id, empresa_id, cliente_id, numero, titulo, estado, iva_pct, validez_dias, created_at, enviado_at, aceptado_at,
-   aceptado_canal, aceptado_por, enviado_por, aceptado_nombre, aceptado_ip, aceptado_user_agent)
-select n.id, '00000000-0000-0000-0000-000000000001', n.cliente_id,
-       'P-' || n.anio || '-' || lpad(n.orden_anio::text, 4, '0'),
-       n.titulo, n.estado, n.iva_pct, n.validez_dias, n.created_at, n.enviado_at, n.aceptado_at,
-       n.aceptado_canal,
-       case when n.aceptado_canal = 'interno' then (select g.id from gerencia g) end,
-       case n.enviado_por
-         when 'gerencia' then (select g.id from gerencia g)
-         when 'obra'     then (select o.id from obra o)
-       end,
-       case when n.aceptado_canal = 'enlace' then c.nombre end,
-       n.aceptado_ip,
-       n.aceptado_user_agent
+insert into public.presupuesto_aceptaciones (presupuesto_id, empresa_id, ip, user_agent, created_at)
+select n.id, '00000000-0000-0000-0000-000000000001', n.aceptado_ip, n.aceptado_user_agent, n.aceptado_at
   from numerados n
-  join public.clientes c on c.id = n.cliente_id;
+  join insertados i on i.id = n.id
+ where n.aceptado_canal = 'enlace';
 
 -- ============================================================================
 -- 7. Partidas (algunas vinculadas a materiales)
@@ -478,7 +499,7 @@ values
 -- 0001 si el anterior es del año pasado).
 insert into public.presupuestos
   (id, empresa_id, cliente_id, numero, titulo, estado, iva_pct, validez_dias, created_at, enviado_at, aceptado_at,
-   aceptado_canal, aceptado_nombre, aceptado_ip, aceptado_user_agent)
+   aceptado_canal, aceptado_nombre)
 select '30000000-0000-4000-8000-000000000102',
        '00000000-0000-0000-0000-000000000002',
        '10000000-0000-4000-8000-000000000101',
@@ -491,11 +512,18 @@ select '30000000-0000-4000-8000-000000000102',
        now() - interval '2 days' + interval '1 hour',
        now() - interval '1 day',
        'enlace',
-       'Promociones del Segura S.A.',
-       '198.51.100.201',
-       'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0'
+       'Promociones del Segura S.A.'
   from (select extract(year from ((now() - interval '2 days') at time zone 'Europe/Madrid'))::integer as anio) a,
        (select extract(year from ((now() - interval '3 days') at time zone 'Europe/Madrid'))::integer as anio) b;
+
+insert into public.presupuesto_aceptaciones (presupuesto_id, empresa_id, ip, user_agent, created_at)
+values (
+  '30000000-0000-4000-8000-000000000102',
+  '00000000-0000-0000-0000-000000000002',
+  '198.51.100.201',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0',
+  now() - interval '1 day'
+);
 
 insert into public.presupuesto_lineas
   (empresa_id, presupuesto_id, orden, descripcion, cantidad, precio_cents, material_id)

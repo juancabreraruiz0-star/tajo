@@ -271,12 +271,23 @@ const DIA_MADRID = new Intl.DateTimeFormat("en-CA", {
   day: "2-digit",
 });
 
-/** Último día de validez (AAAA-MM-DD): fecha de creación en Madrid + validez en días naturales. */
-export function validUntil(createdAt: string, validezDias: number): string {
-  const creado = new Date(createdAt);
-  if (Number.isNaN(creado.getTime())) throw new Error(`Fecha no válida: «${createdAt}».`);
+/**
+ * Fechas de las que sale la validez. Cuenta desde el envío (D13): un borrador viejo que se envía hoy tiene toda su
+ * validez por delante. Sin envío (borrador, o datos anteriores a que se guardara), desde la creación. Misma regla que
+ * aceptar_presupuesto() y la aceptación interna (0008): coalesce(enviado_at, created_at).
+ */
+export interface FechasValidez {
+  created_at: string;
+  enviado_at: string | null;
+}
+
+/** Último día de validez (AAAA-MM-DD): fecha de envío (o de creación) en Madrid + validez en días naturales. */
+export function validUntil(fechas: FechasValidez, validezDias: number): string {
+  const desde = fechas.enviado_at ?? fechas.created_at;
+  const inicio = new Date(desde);
+  if (Number.isNaN(inicio.getTime())) throw new Error(`Fecha no válida: «${desde}».`);
   if (!Number.isInteger(validezDias) || validezDias < 0) throw new Error("La validez debe ser un número de días.");
-  const [anio, mes, dia] = DIA_MADRID.format(creado).split("-").map(Number);
+  const [anio, mes, dia] = DIA_MADRID.format(inicio).split("-").map(Number);
   return new Date(Date.UTC(anio, mes - 1, dia + validezDias)).toISOString().slice(0, 10);
 }
 
@@ -286,8 +297,22 @@ function todayMadrid(now: Date): string {
 }
 
 /** ¿Ha pasado ya el último día de validez? (El último día todavía es válido; misma regla que aceptar_presupuesto.) */
-export function isExpired(createdAt: string, validezDias: number, now: Date = new Date()): boolean {
-  return todayMadrid(now) > validUntil(createdAt, validezDias);
+export function isExpired(fechas: FechasValidez, validezDias: number, now: Date = new Date()): boolean {
+  return todayMadrid(now) > validUntil(fechas, validezDias);
+}
+
+/** Mensaje cuando el total es 0 €. También lo da dbErrorMessage() para el error TJ004 del trigger (0008). */
+export const MENSAJE_TOTAL_CERO = "El total es 0 €: pon precio a las partidas antes de enviarlo.";
+
+/**
+ * Por qué no se puede enviar todavía un presupuesto, o null si se puede: tiene que tener al menos una partida y un
+ * total mayor que 0 € (un presupuesto de 0 € se podría aceptar y facturar y gastaría un número de factura). La base de
+ * datos lo comprueba también al pasar a enviado (0003 y 0008).
+ */
+export function envioError({ numPartidas, totalCents }: { numPartidas: number; totalCents: number }): string | null {
+  if (numPartidas <= 0) return "Añade al menos una partida antes de enviarlo.";
+  if (totalCents <= 0) return MENSAJE_TOTAL_CERO;
+  return null;
 }
 
 // ----------------------------------------------------------------------------

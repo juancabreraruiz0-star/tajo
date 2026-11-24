@@ -8,7 +8,7 @@ import { cn } from "@/components/ui/cn";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { Table, type Column } from "@/components/ui/table";
-import { getSessionProfile } from "@/lib/auth";
+import { getSessionProfile, isAdmin } from "@/lib/auth";
 import { dbErrorMessage } from "@/lib/domain/errors";
 import { formatEuros } from "@/lib/domain/money";
 import { formatQuantity } from "@/lib/domain/quantity";
@@ -17,7 +17,18 @@ import type { Material } from "@/lib/types";
 
 export const metadata: Metadata = { title: "Materiales" };
 
-type MaterialFila = Pick<Material, "id" | "nombre" | "unidad" | "precio_cents" | "stock" | "stock_minimo">;
+type MaterialFila = Pick<Material, "id" | "nombre" | "unidad" | "precio_cents" | "stock" | "stock_minimo"> &
+  Partial<Pick<Material, "coste_cents">>;
+
+const SELECT = "id, nombre, unidad, precio_cents, stock, stock_minimo";
+
+/** Coste sin IVA: solo para gerencia (M2). Vacío = los partes usan el precio. */
+const COLUMNA_COSTE: Column<MaterialFila> = {
+  key: "coste",
+  header: "Coste",
+  align: "right",
+  cell: (m) => (m.coste_cents == null ? <span className="text-stone-400">—</span> : formatEuros(m.coste_cents)),
+};
 
 const COLUMNAS: Column<MaterialFila>[] = [
   {
@@ -59,11 +70,14 @@ interface MaterialesPageProps {
 
 export default async function MaterialesPage({ searchParams }: MaterialesPageProps) {
   const soloBajo = (await searchParams).bajo === "1";
-  const { supabase } = await getSessionProfile();
+  const { perfil, supabase } = await getSessionProfile();
+  const admin = isAdmin(perfil);
+  // Gerencia ve también el coste, junto al precio.
+  const columnas = admin ? [...COLUMNAS.slice(0, 3), COLUMNA_COSTE, ...COLUMNAS.slice(3)] : COLUMNAS;
 
   const { data, error } = await supabase
     .from("materiales")
-    .select("id, nombre, unidad, precio_cents, stock, stock_minimo")
+    .select(admin ? `${SELECT}, coste_cents` : SELECT)
     .order("nombre")
     .overrideTypes<MaterialFila[], { merge: false }>();
 
@@ -134,7 +148,7 @@ export default async function MaterialesPage({ searchParams }: MaterialesPagePro
           ) : (
             <Table
               caption="Materiales del almacén"
-              columns={COLUMNAS}
+              columns={columnas}
               rows={filas}
               rowKey={(m) => m.id}
               rowHref={(m) => `/materiales/${m.id}/editar`}

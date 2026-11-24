@@ -19,6 +19,7 @@ El brief de la tarea (criterios numerados) y la lista de ficheros que develop di
 npm run lint
 npm run typecheck
 npm test
+npm run test:pglite  # base de datos en PGlite: migraciones, seed, RLS y triggers
 npm run build      # si la tarea toca rutas, componentes o configuración
 ```
 Si alguno falla, el veredicto es RECHAZADO y copias el error exacto.
@@ -44,7 +45,7 @@ Lee el flujo de la pantalla o la función tocada y razona un caso real de una em
 
 ```
 VEREDICTO: APROBADO | RECHAZADO
-COMANDOS: lint ✔/✘ typecheck ✔/✘ test ✔/✘ build ✔/✘/no aplica
+COMANDOS: lint ✔/✘ typecheck ✔/✘ test ✔/✘ test:pglite ✔/✘ build ✔/✘/no aplica
 CRITERIOS: 1 ✔ ... / 3 ✘ (motivo)
 FALLOS:
 1. [fichero:línea] Qué está mal → qué debe hacer develop

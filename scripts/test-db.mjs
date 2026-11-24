@@ -1,7 +1,7 @@
 // Tajo · tests de la base de datos contra el Supabase real (npm run test:db). No forman parte de `npm test`.
 //
 // Entra como anónimo, como obra (empleado) y como gerencia (admin) y comprueba qué puede y qué no puede hacer cada
-// uno: RLS, triggers y funciones de 0001–0007. Necesita la base migrada hasta 0007 y el seed recién ejecutado.
+// uno: RLS, triggers y funciones de 0001–0008. Necesita la base migrada hasta 0008 y el seed recién ejecutado.
 // Lo mismo, y bastante más, se comprueba sin Supabase ni contraseñas con `npm run test:pglite` (tests/db/).
 //
 // Configuración:
@@ -59,6 +59,7 @@ const TABLAS = [
   "presupuestos",
   "presupuesto_lineas",
   "presupuestos_con_totales",
+  "presupuesto_aceptaciones",
   "facturas",
   "factura_lineas",
   "contadores",
@@ -468,17 +469,35 @@ await comprobar("guardar_presupuesto rechaza cantidades con más de 3 decimales 
   ),
 );
 
-await comprobar("Crea y envía dos presupuestos de prueba; enviado_por = obra (lo pone la base)", async () => {
+await comprobar("No envía un presupuesto de 0 € (TJ004, 0008)", async () => {
+  const { data: id, error } = await obra.rpc("guardar_presupuesto", {
+    p_id: null,
+    p_cliente: creado.clienteConNif,
+    p_titulo: `${PREFIJO} cero euros`,
+    p_iva: 21,
+    p_validez: 30,
+    p_partidas: [{ orden: 1, descripcion: `${PREFIJO} partida`, cantidad: 1, precio_cents: 0, material_id: null }],
+  });
+  if (error) return errorTexto(error);
+  const intento = await obra.from("presupuestos").update({ estado: "enviado" }).eq("id", id).select("id");
+  if (intento.error?.code !== "TJ004") return intento.error ? errorTexto(intento.error) : "lo ha enviado";
+  return true;
+});
+
+await comprobar("Crea y envía dos presupuestos de prueba; enviado_por = obra y su nombre copiado (lo pone la base)", async () => {
   creado.sinNif = await crearPresupuesto(creado.clienteSinNif, `${PREFIJO} cliente sin NIF`);
   creado.enlace = await crearPresupuesto(creado.clienteConNif, `${PREFIJO} aceptado por el enlace`);
   const { data, error } = await obra
     .from("presupuestos")
-    .update({ estado: "enviado" })
+    .update({ estado: "enviado", enviado_por_nombre: "Inventado" })
     .in("id", [creado.sinNif, creado.enlace])
-    .select("id, estado, enviado_at, enviado_por");
+    .select("id, estado, enviado_at, enviado_por, enviado_por_nombre");
   if (error) return errorTexto(error);
   if (data.length !== 2 || !data.every((p) => p.estado === "enviado" && p.enviado_at)) return "no se han enviado";
-  return data.every((p) => p.enviado_por === obraId) ? true : `enviado_por: ${data.map((p) => p.enviado_por).join(", ")}`;
+  const { data: perfil } = await obra.from("perfiles").select("nombre").eq("id", obraId).single();
+  return data.every((p) => p.enviado_por === obraId && p.enviado_por_nombre === perfil?.nombre)
+    ? true
+    : `enviado_por: ${data.map((p) => `${p.enviado_por} (${p.enviado_por_nombre})`).join(", ")}`;
 });
 
 await comprobar("No puede pasar un presupuesto a aceptado", async () => {
@@ -522,7 +541,7 @@ await comprobar("Sin nombre no acepta y lo dice junto al campo (campo = 'nombre'
   return data?.ok === false && data?.campo === "nombre" ? true : JSON.stringify(data);
 });
 
-await comprobar("Acepta con su token y su nombre: canal 'enlace', aceptado_por vacío, nombre, IP y navegador guardados", async () => {
+await comprobar("Acepta con su token y su nombre: canal 'enlace', aceptado_por vacío, nombre, IP y navegador guardados (aparte, 0008)", async () => {
   if (!tokenEnlace) return "no hay token del presupuesto de prueba";
   const { data, error } = await anon.rpc("aceptar_presupuesto", {
     p_token: tokenEnlace,
@@ -534,19 +553,25 @@ await comprobar("Acepta con su token y su nombre: canal 'enlace', aceptado_por v
   if (data?.ok !== true) return `no ha aceptado: ${data?.motivo ?? JSON.stringify(data)}`;
   const { data: p, error: errorLectura } = await gerencia
     .from("presupuestos_con_totales")
-    .select("estado, aceptado_at, aceptado_canal, aceptado_por, aceptado_nombre, aceptado_ip, aceptado_user_agent")
+    .select("estado, aceptado_at, aceptado_canal, aceptado_por, aceptado_nombre")
     .eq("id", creado.enlace)
     .single();
   if (errorLectura) return errorTexto(errorLectura);
+  const { data: e, error: errorEvidencia } = await gerencia
+    .from("presupuesto_aceptaciones")
+    .select("ip, user_agent")
+    .eq("presupuesto_id", creado.enlace)
+    .single();
+  if (errorEvidencia) return errorTexto(errorEvidencia);
   return p.estado === "aceptado" &&
     p.aceptado_at &&
     p.aceptado_canal === "enlace" &&
     p.aceptado_por === null &&
     p.aceptado_nombre === `${PREFIJO} Cliente` &&
-    p.aceptado_ip === "203.0.113.10" &&
-    p.aceptado_user_agent === "tajo-test-db"
+    e.ip === "203.0.113.10" &&
+    e.user_agent === "tajo-test-db"
     ? true
-    : JSON.stringify(p);
+    : JSON.stringify({ ...p, ...e });
 });
 
 await comprobar("Nadie cambia la evidencia de la aceptación (ni gerencia)", async () =>
@@ -660,6 +685,14 @@ await comprobar(`Facturar a un cliente sin NIF falla con el error propio (${ERRO
 });
 
 seccion("Obra (empleado), con un presupuesto ya aceptado");
+
+await comprobar("No lee la IP ni el navegador de la aceptación (solo gerencia, 0008)", async () => {
+  const tabla = await obra.from("presupuesto_aceptaciones").select("ip").eq("presupuesto_id", creado.enlace);
+  if (tabla.error) return errorTexto(tabla.error);
+  if (tabla.data.length > 0) return "ha leído la IP";
+  const columna = await obra.from("presupuestos").select("aceptado_ip").eq("id", creado.enlace);
+  return columna.error ? true : "presupuestos sigue teniendo aceptado_ip";
+});
 
 await comprobar("No puede facturar", async () =>
   falla(await obra.rpc("facturar_presupuesto", { p_presupuesto: creado.sinNif }), /administrador/i),

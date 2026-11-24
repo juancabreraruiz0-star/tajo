@@ -1,6 +1,7 @@
 // Migraciones y seed: 0007 se aplica sobre una base con datos (como la real: 0001 → 0006 y actividad de la app) sin
 // perder nada, aborta con la lista si hay datos que no cumplirían sus reglas, y 0006, 0007 y el seed se pueden volver
-// a ejecutar.
+// a ejecutar. Después, 0008 sobre esa misma base (ya con 0007 y más actividad): mueve la IP y el navegador a su tabla,
+// rellena el nombre de quien envió, no pierde nada y se puede volver a ejecutar. El seed va al final (necesita 0008).
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
@@ -21,6 +22,7 @@ import {
 } from "./andamio";
 
 const HASTA_0006 = migraciones().filter((m) => m < "0007");
+const HASTA_0007 = migraciones().filter((m) => m < "0008");
 
 let base: Base;
 /** Presupuestos creados como lo haría la app antes de 0007. */
@@ -183,11 +185,93 @@ describe("0007 sobre una base 0001 → 0006 con datos", () => {
   });
 });
 
-describe("seed sobre 0001 → 0007", () => {
+describe("0008 sobre una base 0001 → 0007 con datos", () => {
+  /** Presupuesto enviado por obra y aceptado por el enlace con IP y navegador cuando la base tenía 0007. */
+  let conEvidencia = "";
+
+  it("se aplica sin perder nada: copia la IP y el navegador a su tabla, quita las columnas y rellena quién envió", async () => {
+    // Actividad con 0007: obra envía el borrador y el cliente lo acepta por el enlace con IP y navegador.
+    conEvidencia = app.borrador;
+    const r = await base.como(
+      "postgres",
+      async (tx) => {
+        await ser(tx, OBRA);
+        await en(tx, "update presupuestos set estado = 'enviado' where id = $1", [conEvidencia]);
+        await ser(tx, "postgres");
+        const t = (await unaEn(tx, "select token from presupuestos where id = $1", [conEvidencia])).token;
+        await ser(tx, "anon");
+        await en(tx, "select aceptar_presupuesto($1, 'Cliente real', '203.0.113.7', 'Navegador de antes')", [t]);
+      },
+      { guardar: true },
+    );
+    valor(r);
+    const nombreObra = (await base.one("select nombre from perfiles where id = $1", [OBRA]))?.nombre;
+
+    const antes = await foto(base);
+    await base.exec(migracion("0008_auditoria3.sql"));
+    expect(await foto(base)).toEqual(antes);
+
+    expect(
+      await base.q(
+        `select column_name from information_schema.columns
+          where table_name = 'presupuestos' and column_name in ('aceptado_ip', 'aceptado_user_agent')`,
+      ),
+    ).toEqual([]);
+    expect(await base.q("select presupuesto_id, ip, user_agent from presupuesto_aceptaciones")).toEqual([
+      { presupuesto_id: conEvidencia, ip: "203.0.113.7", user_agent: "Navegador de antes" },
+    ]);
+    expect(await base.one("select enviado_por_nombre from presupuestos where id = $1", [conEvidencia])).toEqual({
+      enviado_por_nombre: nombreObra,
+    });
+    // Enviado antes de 0007: no se sabe quién lo envió, así que tampoco su nombre.
+    expect(await base.one("select enviado_por, enviado_por_nombre from presupuestos where id = $1", [app.aceptadoEnlace])).toEqual({
+      enviado_por: null,
+      enviado_por_nombre: null,
+    });
+  });
+
+  it("0008 se puede volver a ejecutar y deja lo mismo", async () => {
+    const antes = {
+      foto: await foto(base),
+      evidencias: await base.q("select presupuesto_id, ip, user_agent, created_at from presupuesto_aceptaciones order by 1"),
+      nombres: await base.q("select id, enviado_por_nombre from presupuestos order by id"),
+    };
+    await base.exec(migracion("0008_auditoria3.sql"));
+    expect({
+      foto: await foto(base),
+      evidencias: await base.q("select presupuesto_id, ip, user_agent, created_at from presupuesto_aceptaciones order by 1"),
+      nombres: await base.q("select id, enviado_por_nombre from presupuestos order by id"),
+    }).toEqual(antes);
+  });
+
+  it("si falla, no aplica nada (va en una transacción)", async () => {
+    const otra = await baseVacia();
+    try {
+      for (const m of HASTA_0007) await otra.exec(migracion(m));
+      // Una comprobación final que no se cumple: la política de lectura de la tabla nueva ya existe con otro nombre.
+      await otra.exec(`
+        create table public.presupuesto_aceptaciones (presupuesto_id uuid primary key, empresa_id uuid not null,
+          ip text, user_agent text, created_at timestamptz not null default now());
+        create policy sobra on public.presupuesto_aceptaciones for select using (true);`);
+      await expect(otra.exec(migracion("0008_auditoria3.sql"))).rejects.toThrow(/solo la política de lectura de gerencia/);
+      await otra.exec("rollback");
+      const quedo = await otra.one(`
+        select exists (select 1 from information_schema.columns
+                        where table_name = 'presupuestos' and column_name = 'aceptado_ip') as ip,
+               exists (select 1 from information_schema.columns
+                        where table_name = 'presupuestos' and column_name = 'enviado_por_nombre') as nombre`);
+      expect(quedo).toEqual({ ip: true, nombre: false });
+    } finally {
+      await otra.cerrar();
+    }
+  });
+});
+
+describe("seed sobre 0001 → 0008", () => {
   async function fotoSeed() {
     return {
       presupuestos: await base.q(
-        `select id, numero, estado, aceptado_canal, aceptado_por, aceptado_nombre, aceptado_ip, enviado_por
+        `select id, numero, estado, aceptado_canal, aceptado_por, aceptado_nombre, enviado_por, enviado_por_nombre
            from presupuestos where empresa_id = $1 order by id`,
         [E1],
       ),
@@ -223,6 +307,17 @@ describe("seed sobre 0001 → 0007", () => {
       for (const m of HASTA_0006) await otra.exec(migracion(m));
       await crearUsuariosDemo(otra);
       await expect(otra.exec(seed())).rejects.toThrow(/Falta aplicar migrations\/0007_auditoria2\.sql/);
+    } finally {
+      await otra.cerrar();
+    }
+  });
+
+  it("sin 0008 el seed se niega a ejecutarse y lo dice", async () => {
+    const otra = await baseVacia();
+    try {
+      for (const m of HASTA_0007) await otra.exec(migracion(m));
+      await crearUsuariosDemo(otra);
+      await expect(otra.exec(seed())).rejects.toThrow(/Falta aplicar migrations\/0008_auditoria3\.sql/);
     } finally {
       await otra.cerrar();
     }

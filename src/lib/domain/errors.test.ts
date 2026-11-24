@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { authErrorMessage, dbErrorMessage, isClienteSinNif } from "./errors";
+import { envioError } from "./presupuestos";
 
 describe("dbErrorMessage", () => {
   it.each([
@@ -88,6 +89,13 @@ describe("dbErrorMessage", () => {
     expect(dbErrorMessage({ code: "TJ003", message })).toBe(message);
     expect(dbErrorMessage({ code: "TJ003", message: "" })).toBe(message);
     expect(dbErrorMessage({ code: "TJ003", message: null })).toBe(message);
+  });
+
+  it("envío de un presupuesto de 0 € (TJ004, 0008): mensaje en español, el mismo que el del dominio", () => {
+    const esperado = "El total es 0 €: pon precio a las partidas antes de enviarlo.";
+    expect(dbErrorMessage({ code: "TJ004", message: "Un presupuesto de 0 € no se puede enviar." })).toBe(esperado);
+    expect(dbErrorMessage({ code: "TJ004", message: null })).toBe(esperado);
+    expect(envioError({ numPartidas: 2, totalCents: 0 })).toBe(esperado);
   });
 
   it("NIF con la letra o el dígito de control mal (clientes_nif_valido_chk, 0007)", () => {

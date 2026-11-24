@@ -254,7 +254,7 @@ export function PresupuestoForm({ id, clientes, materiales, initial, cancelHref,
             inputMode="numeric"
             autoComplete="off"
             placeholder="30"
-            hint="Días que el cliente tiene para aceptarlo."
+            hint="Días que el cliente tiene para aceptarlo, contados desde que se envía."
             value={cabecera.validez_dias}
             onChange={(e) => setCampo("validez_dias", e.target.value)}
             error={campoError?.validez_dias}

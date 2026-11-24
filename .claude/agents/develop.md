@@ -31,6 +31,7 @@ src/
 supabase/
   migrations/           SQL versionado: tablas, RLS, funciones
   seed.sql              datos de demo
+tests/db/               tests de la base de datos en PGlite (andamio.ts monta Supabase en memoria)
 ```
 
 ## Reglas
@@ -52,10 +53,10 @@ supabase/
 Ejecuta y deja en verde:
 
 ```bash
-npm run lint && npm run typecheck && npm test
+npm run lint && npm run typecheck && npm test && npm run test:pglite
 ```
 
-Si la tarea toca rutas o build, ejecuta también `npm run build`.
+`test:pglite` aplica todas las migraciones y el seed en PGlite: si tocas SQL, añade ahí los tests de lo nuevo. Si la tarea toca rutas o build, ejecuta también `npm run build` (o todo junto con `npm run check`).
 
 ## Informe que devuelves al orquestador
 
@@ -63,6 +64,6 @@ Si la tarea toca rutas o build, ejecuta también `npm run build`.
 TAREA: <nombre>
 FICHEROS: <lista de ficheros creados o modificados>
 CRITERIOS: 1 ✔ / 2 ✔ / 3 ✔ ... (uno por criterio del brief, con una línea de cómo se cumple)
-COMANDOS: lint ✔ typecheck ✔ test ✔ (n tests) build ✔/no aplica
+COMANDOS: lint ✔ typecheck ✔ test ✔ (n tests) test:pglite ✔ (n tests) build ✔/no aplica
 NOTAS: decisiones tomadas o dudas para el orquestador
 ```

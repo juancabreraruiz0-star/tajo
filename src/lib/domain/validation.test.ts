@@ -221,6 +221,37 @@ describe("validateMaterial", () => {
   });
 });
 
+describe("validateMaterial · coste (solo gerencia, M2)", () => {
+  const base = { nombre: "Rodapié cerámico", unidad: "m", precio: "9,00", stock: "0", stock_minimo: "0" };
+
+  it("sin conCoste no se lee ni se envía el coste, aunque llegue en el formulario", () => {
+    const r = validateMaterial({ ...base, coste: "6,00" });
+    expect(r.ok && "coste_cents" in r.data).toBe(false);
+  });
+
+  it("con conCoste convierte el coste a céntimos (sin IVA)", () => {
+    const r = validateMaterial({ ...base, coste: "6,35" }, { conCoste: true });
+    expect(r.ok && r.data.coste_cents).toBe(635);
+    expect(validateMaterial({ ...base, coste: "0" }, { conCoste: true })).toMatchObject({ data: { coste_cents: 0 } });
+  });
+
+  it("vacío queda null (los partes usan el precio de venta)", () => {
+    for (const coste of ["", "   ", undefined]) {
+      const r = validateMaterial({ ...base, coste }, { conCoste: true });
+      expect(r.ok && r.data.coste_cents).toBeNull();
+    }
+  });
+
+  it("negativo, no numérico o por encima de 1.000.000 € da error en el campo", () => {
+    for (const coste of ["-1", "barato", "1.000.000,01"]) {
+      const r = validateMaterial({ ...base, coste }, { conCoste: true });
+      expect(r.ok).toBe(false);
+      expect(!r.ok && r.errors.coste).toBeTruthy();
+    }
+    expect(validateMaterial({ ...base, coste: "1.000.000" }, { conCoste: true }).ok).toBe(true);
+  });
+});
+
 describe("materialChanges", () => {
   const data = { nombre: "Plato de ducha 80×120", unidad: "ud", precio_cents: 18_900, stock: 4, stock_minimo: 2 };
 
